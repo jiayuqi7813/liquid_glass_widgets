@@ -385,18 +385,22 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
                 if (isInteracting) {
                   final lensThickness =
                       _isTapSwitching ? math.max(thickness, 0.72) : thickness;
-                  final restingOpacity = (1.0 - lensThickness / 0.72)
-                      .clamp(0.0, 1.0)
-                      .toDouble();
+                  final restingOpacity =
+                      (1.0 - lensThickness / 0.72).clamp(0.0, 1.0).toDouble();
 
                   return RepaintBoundary(
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
                         if (restingOpacity > 0)
-                          Opacity(
-                            opacity: restingOpacity,
-                            child: buildRestingPill(),
+                          Positioned.fill(
+                            child: Opacity(
+                              opacity: restingOpacity,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [buildRestingPill()],
+                              ),
+                            ),
                           ),
                         segmentLabels,
                         buildLens(lensThickness: lensThickness),

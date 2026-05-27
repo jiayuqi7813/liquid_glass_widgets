@@ -128,6 +128,13 @@ class AnimatedGlassIndicator extends StatelessWidget {
     chromaticAberration: GlassDefaults.chromaticAberration,
     lightAngle: GlassDefaults.lightAngle,
     blur: 0,
+    refractionScale: 0.72,
+    verticalRefractionScale: 0.34,
+    sideFisheyeScale: 1.0,
+    compactLensHeightPinch: 0.72,
+    compactLensEdgePull: 0.82,
+    compactLensEdgeBlur: 0.42,
+    compactLensInnerShadow: 0.66,
   );
 
   /// Clip budget for the Impeller BackdropFilterLayer.
@@ -182,7 +189,7 @@ class AnimatedGlassIndicator extends StatelessWidget {
     // We fade the glass in/out by setting `visibility` on the settings rather
     // than wrapping the widget in `Opacity`.
     final fade = thickness.clamp(0.0, 1.0);
-    final base = glassSettings ?? _baseGlassSettings;
+    final base = _withCompactLensDefaults(glassSettings ?? _baseGlassSettings);
     final effectiveSettings = base.copyWith(visibility: fade);
 
     final shape = useSuperellipse
@@ -283,6 +290,28 @@ class AnimatedGlassIndicator extends StatelessWidget {
           children: [positioning],
         ),
       ),
+    );
+  }
+
+  LiquidGlassSettings _withCompactLensDefaults(LiquidGlassSettings settings) {
+    if (settings.compactLensHeightPinch > 0.0 ||
+        settings.compactLensEdgePull > 0.0 ||
+        settings.compactLensEdgeBlur > 0.0 ||
+        settings.compactLensInnerShadow > 0.0 ||
+        settings.sideFisheyeScale > 0.0 ||
+        settings.refractionScale < 1.0 ||
+        settings.verticalRefractionScale < 1.0) {
+      return settings;
+    }
+
+    return settings.copyWith(
+      refractionScale: _baseGlassSettings.refractionScale,
+      verticalRefractionScale: _baseGlassSettings.verticalRefractionScale,
+      sideFisheyeScale: _baseGlassSettings.sideFisheyeScale,
+      compactLensHeightPinch: _baseGlassSettings.compactLensHeightPinch,
+      compactLensEdgePull: _baseGlassSettings.compactLensEdgePull,
+      compactLensEdgeBlur: _baseGlassSettings.compactLensEdgeBlur,
+      compactLensInnerShadow: _baseGlassSettings.compactLensInnerShadow,
     );
   }
 }

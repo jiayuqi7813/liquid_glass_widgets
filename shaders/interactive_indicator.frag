@@ -137,8 +137,15 @@ void main() {
   float distFromEdge = abs(dist);
   // Low-alpha lenses are used by segmented controls above real text. Keep
   // their base refraction horizontal so the top/bottom rim does not duplicate glyphs.
-  float translucentLens = max(step(uBaseAlphaMultiplier, 0.119), step(uEdgeAlphaMultiplier, 0.399));
   float compactHeightPinch = clamp(uCompactLensHeightPinch, 0.0, 1.0);
+  float compactLensEnabled = max(
+    max(step(0.001, compactHeightPinch), step(0.001, uCompactLensEdgePull)),
+    max(step(0.001, uCompactLensEdgeBlur), step(0.001, uCompactLensInnerShadow))
+  );
+  float translucentLens = max(
+    max(step(uBaseAlphaMultiplier, 0.119), step(uEdgeAlphaMultiplier, 0.399)),
+    compactLensEnabled
+  );
   
   // TWEAK: edgeZone - How far from the edge the distortion extends (logical px)
   //   Smaller = sharper transition, concentrated at very edge
