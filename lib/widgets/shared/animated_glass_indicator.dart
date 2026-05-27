@@ -128,13 +128,13 @@ class AnimatedGlassIndicator extends StatelessWidget {
     chromaticAberration: GlassDefaults.chromaticAberration,
     lightAngle: GlassDefaults.lightAngle,
     blur: 0,
-    refractionScale: 0.72,
-    verticalRefractionScale: 0.90,
-    sideFisheyeScale: 1.0,
-    compactLensHeightPinch: 0.10,
-    compactLensEdgePull: 0.82,
-    compactLensEdgeBlur: 0.42,
-    compactLensInnerShadow: 0.66,
+    refractionScale: 0.80,
+    verticalRefractionScale: 0.88,
+    sideFisheyeScale: 0.72,
+    compactLensHeightPinch: 0.08,
+    compactLensEdgePull: 0.38,
+    compactLensEdgeBlur: 0.18,
+    compactLensInnerShadow: 0.42,
   );
 
   /// Clip budget for the Impeller BackdropFilterLayer.
