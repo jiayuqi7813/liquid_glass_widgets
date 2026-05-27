@@ -25,6 +25,7 @@ import 'shared/bottom_bar_internal.dart'
         TabIndicator,
         kBottomBarGlassDefaults;
 import 'shared/bar_layout_utils.dart';
+import 'shared/vector_foreground_renderer.dart';
 
 /// A glass morphism bottom navigation bar following Apple's design patterns.
 ///
@@ -619,6 +620,25 @@ class _GlassBottomBarState extends State<GlassBottomBar> {
                           : 1.0,
                       foregroundBuilder: (context, intensity, alignment) =>
                           _buildForegroundTabs(),
+                      vectorForegroundBuilder:
+                          (context, intensity, alignment, transform, radius) =>
+                              BottomBarVectorForegroundLayer(
+                        tabs: widget.tabs,
+                        selectedIndex: widget.selectedIndex,
+                        selectedIconColor: widget.selectedIconColor,
+                        unselectedIconColor: widget.unselectedIconColor,
+                        iconSize: widget.iconSize,
+                        labelFontSize: widget.labelFontSize,
+                        iconLabelSpacing: widget.iconLabelSpacing,
+                        tabPadding: widget.tabPadding,
+                        itemCount: widget.tabs.length,
+                        alignment: alignment,
+                        thickness: intensity,
+                        expansion: widget.indicatorExpansion,
+                        transform: transform,
+                        borderRadius: radius,
+                        textStyle: widget.textStyle,
+                      ),
                       childUnselected: Row(
                         children: [
                           for (var i = 0; i < widget.tabs.length; i++)
