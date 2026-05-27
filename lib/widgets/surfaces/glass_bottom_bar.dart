@@ -617,6 +617,8 @@ class _GlassBottomBarState extends State<GlassBottomBar> {
                       interactionScale: widget.interactionBehavior.hasScale
                           ? widget.pressScale
                           : 1.0,
+                      foregroundBuilder: (context, intensity, alignment) =>
+                          _buildForegroundTabs(),
                       childUnselected: Row(
                         children: [
                           for (var i = 0; i < widget.tabs.length; i++)
@@ -730,6 +732,33 @@ class _GlassBottomBarState extends State<GlassBottomBar> {
                     ),
                   )
                 : const SizedBox.shrink(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildForegroundTabs() {
+    return Row(
+      children: [
+        for (var i = 0; i < widget.tabs.length; i++)
+          Expanded(
+            child: BottomBarTabItem(
+              tab: widget.tabs[i],
+              selected: i == widget.selectedIndex,
+              selectedIconColor: widget.selectedIconColor,
+              unselectedIconColor: widget.unselectedIconColor,
+              iconSize: widget.iconSize,
+              labelFontSize: widget.labelFontSize,
+              textStyle: widget.textStyle,
+              iconLabelSpacing: widget.iconLabelSpacing,
+              glowDuration: widget.glowDuration,
+              glowBlurRadius: widget.glowBlurRadius,
+              glowSpreadRadius: widget.glowSpreadRadius,
+              glowOpacity: widget.glowOpacity,
+              // onTap is null: all tap selection goes through
+              // TabIndicator.onBarTapDown (prevents double-fire).
+              onTap: null,
+            ),
           ),
       ],
     );

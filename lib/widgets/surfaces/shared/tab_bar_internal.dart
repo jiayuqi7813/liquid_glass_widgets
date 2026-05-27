@@ -111,7 +111,7 @@ class TabBarContentState extends State<TabBarContent>
   late SingleSpringController _indWidthSpring;
 
   late List<GlobalKey> _tabKeys;
-  final GlobalKey _foregroundSdfKey = GlobalKey();
+  final GlobalKey _foregroundKey = GlobalKey();
   List<double> _tabWidths = [];
   List<double> _tabOffsets = [];
 
@@ -579,14 +579,13 @@ class TabBarContentState extends State<TabBarContent>
       selectedIconColor,
       unselectedIconColor,
     );
-    final foregroundSdfRevision = Object.hashAll([
+    final foregroundRevision = Object.hashAll([
       widget.selectedIndex,
       widget.isScrollable,
       for (final tab in widget.tabs) tab.hashCode,
     ]);
-    final foregroundColor = selectedLabelStyle.color ?? selectedIconColor;
-    final foregroundSdfLayer = RepaintBoundary(
-      key: _foregroundSdfKey,
+    final foregroundTextureLayer = RepaintBoundary(
+      key: _foregroundKey,
       child: tabLabels,
     );
 
@@ -666,9 +665,8 @@ class TabBarContentState extends State<TabBarContent>
                   borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
-                  foregroundSdfKey: _foregroundSdfKey,
-                  foregroundColor: foregroundColor,
-                  foregroundSdfRevision: foregroundSdfRevision,
+                  foregroundKey: _foregroundKey,
+                  foregroundRevision: foregroundRevision,
                   expansion:
                       widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
                   paintBackground: paintBackground,
@@ -709,7 +707,7 @@ class TabBarContentState extends State<TabBarContent>
                               controller: widget.scrollController,
                               scrollDirection: Axis.horizontal,
                               physics: physics,
-                              child: foregroundSdfLayer,
+                              child: foregroundTextureLayer,
                             ),
                           ),
                         ],
@@ -731,7 +729,7 @@ class TabBarContentState extends State<TabBarContent>
                         paintBackground: true,
                         paintGlass: !isPremiumQuality,
                       ),
-                    foregroundSdfLayer,
+                    foregroundTextureLayer,
                     if (canShowIndicator && isPremiumQuality)
                       buildIndicator(
                         paintBackground: false,

@@ -741,6 +741,8 @@ class _GlassSearchableBottomBarState extends State<GlassSearchableBottomBar>
                                   },
                           onDismissSearch: () =>
                               widget.searchConfig.onSearchToggle(false),
+                          foregroundBuilder: (ctx, intensity, alignment) =>
+                              _buildForegroundTabRow(),
                           childUnselected: _buildTabRow(selected: false),
                           selectedTabBuilder: (ctx, intensity, alignment) =>
                               _buildTabRow(
@@ -946,6 +948,33 @@ class _GlassSearchableBottomBarState extends State<GlassSearchableBottomBar>
             child: BottomBarTabItem(
               tab: widget.tabs[i],
               selected: false,
+              selectedIconColor: widget.selectedIconColor,
+              unselectedIconColor: widget.unselectedIconColor,
+              iconSize: widget.iconSize,
+              labelFontSize: widget.labelFontSize,
+              textStyle: widget.textStyle,
+              iconLabelSpacing: widget.iconLabelSpacing,
+              glowDuration: widget.glowDuration,
+              glowBlurRadius: widget.glowBlurRadius,
+              glowSpreadRadius: widget.glowSpreadRadius,
+              glowOpacity: widget.glowOpacity,
+              // onTap is null: all tap selection goes through
+              // SearchableTabIndicator.onBarTapDown (prevents double-fire).
+              onTap: null,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildForegroundTabRow() {
+    return Row(
+      children: [
+        for (var i = 0; i < widget.tabs.length; i++)
+          Expanded(
+            child: BottomBarTabItem(
+              tab: widget.tabs[i],
+              selected: i == widget.selectedIndex,
               selectedIconColor: widget.selectedIconColor,
               unselectedIconColor: widget.unselectedIconColor,
               iconSize: widget.iconSize,

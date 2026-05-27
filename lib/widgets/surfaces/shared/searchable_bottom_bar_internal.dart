@@ -109,6 +109,7 @@ class SearchableTabIndicator extends StatefulWidget {
     this.indicatorColor,
     this.indicatorSettings,
     this.backgroundKey,
+    this.foregroundBuilder,
     this.collapsedLogoBuilder,
     this.indicatorExpansion = 14,
     this.interactionGlowColor,
@@ -137,6 +138,7 @@ class SearchableTabIndicator extends StatefulWidget {
   final double innerBlur;
   final MaskingQuality maskingQuality;
   final GlobalKey? backgroundKey;
+  final Widget Function(BuildContext, double, Alignment)? foregroundBuilder;
   final bool isSearchActive;
   final VoidCallback onDismissSearch;
   final WidgetBuilder? collapsedLogoBuilder;
@@ -162,7 +164,7 @@ class SearchableTabIndicator extends StatefulWidget {
 
 class SearchableTabIndicatorState extends State<SearchableTabIndicator>
     with TabDragGestureMixin<SearchableTabIndicator> {
-  final GlobalKey _foregroundSdfKey = GlobalKey();
+  final GlobalKey _foregroundKey = GlobalKey();
 
   // ── Mixin interface ────────────────────────────────────────────────────────
   @override
@@ -359,6 +361,11 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
     required double glassRadius,
     required Color indicatorColor,
   }) {
+    final foregroundContent = widget.quality == GlassQuality.premium
+        ? (widget.foregroundBuilder?.call(context, thickness, alignment) ??
+            widget.childUnselected)
+        : widget.childUnselected;
+
     return SizedBox(
         height: widget.barHeight,
         child: _wrapWithGlow(
@@ -379,10 +386,10 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
               // Unselected icons — all tabs in unselected style (for refraction).
               Positioned.fill(
                 child: RepaintBoundary(
-                  key: _foregroundSdfKey,
+                  key: _foregroundKey,
                   child: Container(
                     padding: widget.tabPadding,
-                    child: widget.childUnselected,
+                    child: foregroundContent,
                   ),
                 ),
               ),
@@ -400,15 +407,14 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                   expansion: widget.indicatorExpansion,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
-                  foregroundSdfKey: _foregroundSdfKey,
-                  foregroundColor: Colors.white,
-                  foregroundSdfRevision:
+                  foregroundKey: _foregroundKey,
+                  foregroundRevision:
                       Object.hash(widget.tabIndex, widget.tabCount),
                 ),
 
               // Persistent selected-icon overlay — always at TARGET position
               // so the selected icon stays vibrant (selected style) at rest.
-              if (widget.visible)
+              if (widget.visible && widget.quality != GlassQuality.premium)
                 Positioned.fill(
                   child: Align(
                     alignment: targetAlignment,
@@ -438,6 +444,53 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
     required Color indicatorColor,
   }) {
     final effRadius = thickness < 1 ? backgroundRadius : glassRadius;
+    final foregroundContent = widget.quality == GlassQuality.premium
+        ? Container(
+            padding: widget.tabPadding,
+            height: widget.barHeight,
+            child: widget.foregroundBuilder?.call(
+                  context,
+                  thickness,
+                  alignment,
+                ) ??
+                widget.childUnselected,
+          )
+        : Stack(
+            children: [
+              ClipPath(
+                clipper: JellyClipper(
+                  itemCount: widget.tabCount,
+                  alignment: alignment,
+                  thickness: thickness,
+                  expansion: widget.indicatorExpansion,
+                  transform: jellyTransform,
+                  borderRadius: effRadius,
+                  inverse: true,
+                ),
+                child: Container(
+                  padding: widget.tabPadding,
+                  height: widget.barHeight,
+                  child: widget.childUnselected,
+                ),
+              ),
+              ClipPath(
+                clipper: JellyClipper(
+                  itemCount: widget.tabCount,
+                  alignment: alignment,
+                  thickness: thickness,
+                  expansion: widget.indicatorExpansion,
+                  transform: jellyTransform,
+                  borderRadius: effRadius,
+                ),
+                child: Container(
+                  padding: widget.tabPadding,
+                  height: widget.barHeight,
+                  child:
+                      widget.selectedTabBuilder(context, thickness, alignment),
+                ),
+              ),
+            ],
+          );
     return SizedBox(
         height: widget.barHeight,
         child: _wrapWithGlow(
@@ -473,46 +526,13 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                 backgroundKey: widget.backgroundKey,
               ),
 
-              // 2. Icon Content Layer (Unselected + Selected combined for refraction)
+              // 2. Foreground texture source. Premium captures the complete
+              // tab row so shader refraction can sample a continuous color layer.
+              // Lower tiers keep the clipped dual-layer masking path.
               Positioned.fill(
                 child: RepaintBoundary(
-                  key: _foregroundSdfKey,
-                  child: Stack(
-                    children: [
-                      ClipPath(
-                        clipper: JellyClipper(
-                          itemCount: widget.tabCount,
-                          alignment: alignment,
-                          thickness: thickness,
-                          expansion: widget.indicatorExpansion,
-                          transform: jellyTransform,
-                          borderRadius: effRadius,
-                          inverse: true,
-                        ),
-                        child: Container(
-                          padding: widget.tabPadding,
-                          height: widget.barHeight,
-                          child: widget.childUnselected,
-                        ),
-                      ),
-                      ClipPath(
-                        clipper: JellyClipper(
-                          itemCount: widget.tabCount,
-                          alignment: alignment,
-                          thickness: thickness,
-                          expansion: widget.indicatorExpansion,
-                          transform: jellyTransform,
-                          borderRadius: effRadius,
-                        ),
-                        child: Container(
-                          padding: widget.tabPadding,
-                          height: widget.barHeight,
-                          child: widget.selectedTabBuilder(
-                              context, thickness, alignment),
-                        ),
-                      ),
-                    ],
-                  ),
+                  key: _foregroundKey,
+                  child: foregroundContent,
                 ),
               ),
 
@@ -533,9 +553,8 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                 expansion: widget.indicatorExpansion,
                 glassSettings: widget.indicatorSettings,
                 backgroundKey: widget.backgroundKey,
-                foregroundSdfKey: _foregroundSdfKey,
-                foregroundColor: Colors.white,
-                foregroundSdfRevision:
+                foregroundKey: _foregroundKey,
+                foregroundRevision:
                     Object.hash(widget.tabIndex, widget.tabCount),
               ),
             ],

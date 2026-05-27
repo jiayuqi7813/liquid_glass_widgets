@@ -17,14 +17,11 @@ class AnimatedGlassIndicator extends StatelessWidget {
   /// Optional background key for Skia/Web refraction
   final GlobalKey? backgroundKey;
 
-  /// Optional foreground boundary converted to a premium shader SDF atlas.
-  final GlobalKey? foregroundSdfKey;
+  /// Optional foreground boundary converted to a premium shader RGBA atlas.
+  final GlobalKey? foregroundKey;
 
-  /// Color used to reconstruct [foregroundSdfKey] in the premium shader.
-  final Color foregroundColor;
-
-  /// Cache revision for foreground SDF changes that keep the same bounds.
-  final int foregroundSdfRevision;
+  /// Cache revision for foreground RGBA changes that keep the same bounds.
+  final int foregroundRevision;
 
   /// Current velocity of the drag gesture.
   final double velocity;
@@ -107,9 +104,8 @@ class AnimatedGlassIndicator extends StatelessWidget {
     this.expansion = 8.0,
     this.useSuperellipse = true,
     this.backgroundKey,
-    this.foregroundSdfKey,
-    this.foregroundColor = Colors.white,
-    this.foregroundSdfRevision = 0,
+    this.foregroundKey,
+    this.foregroundRevision = 0,
     this.paintBackground = true,
     this.paintGlass = true,
     this.exactWidth,
@@ -202,9 +198,8 @@ class AnimatedGlassIndicator extends StatelessWidget {
       quality: quality,
       interactionIntensity: thickness,
       backgroundKey: backgroundKey,
-      foregroundSdfKey: foregroundSdfKey,
-      foregroundColor: foregroundColor,
-      foregroundSdfRevision: foregroundSdfRevision,
+      foregroundKey: foregroundKey,
+      foregroundRevision: foregroundRevision,
       clipExpansion: _jellyClipExpansion,
       // Map glassSettings.thickness → rimThickness (logical px rim width).
       // uThickness is declared but unused in interactive_indicator.frag;

@@ -312,6 +312,7 @@ class TabIndicator extends StatefulWidget {
     required this.maskingQuality,
     this.indicatorSettings,
     this.backgroundKey,
+    this.foregroundBuilder,
     this.indicatorExpansion = 14,
     this.interactionGlowColor,
     this.interactionGlowRadius = 1.5,
@@ -338,6 +339,7 @@ class TabIndicator extends StatefulWidget {
   final double innerBlur;
   final MaskingQuality maskingQuality;
   final GlobalKey? backgroundKey;
+  final Widget Function(BuildContext, double, Alignment)? foregroundBuilder;
 
   /// How far the jelly indicator's leading and trailing edges expand
   /// past the tab boundary as the indicator translates. Higher values
@@ -366,7 +368,7 @@ class TabIndicator extends StatefulWidget {
 @visibleForTesting
 class TabIndicatorState extends State<TabIndicator>
     with TabDragGestureMixin<TabIndicator> {
-  final GlobalKey _foregroundSdfKey = GlobalKey();
+  final GlobalKey _foregroundKey = GlobalKey();
 
   // ── Mixin interface ────────────────────────────────────────────────────────
   @override
@@ -558,6 +560,11 @@ class TabIndicatorState extends State<TabIndicator>
     required double glassRadius,
     required Color indicatorColor,
   }) {
+    final foregroundContent = widget.quality == GlassQuality.premium
+        ? (widget.foregroundBuilder?.call(context, thickness, alignment) ??
+            widget.childUnselected)
+        : widget.childUnselected;
+
     return SizedBox(
       height: widget.barHeight,
       child: _wrapWithGlow(
@@ -579,10 +586,10 @@ class TabIndicatorState extends State<TabIndicator>
             // The glass indicator refracts this layer as the pill moves over it.
             Positioned.fill(
               child: RepaintBoundary(
-                key: _foregroundSdfKey,
+                key: _foregroundKey,
                 child: Container(
                   padding: widget.tabPadding,
-                  child: widget.childUnselected,
+                  child: foregroundContent,
                 ),
               ),
             ),
@@ -602,9 +609,8 @@ class TabIndicatorState extends State<TabIndicator>
                 expansion: widget.indicatorExpansion,
                 glassSettings: widget.indicatorSettings,
                 backgroundKey: widget.backgroundKey,
-                foregroundSdfKey: _foregroundSdfKey,
-                foregroundColor: const Color(0xFFFFFFFF),
-                foregroundSdfRevision:
+                foregroundKey: _foregroundKey,
+                foregroundRevision:
                     Object.hash(widget.tabIndex, widget.tabCount),
               ),
 
@@ -612,7 +618,7 @@ class TabIndicatorState extends State<TabIndicator>
             // (settled) tab position regardless of spring thickness. This ensures
             // the selected icon stays vibrant (selected style) at rest, not washed
             // out by the unselected-style icons in the layer below.
-            if (widget.visible)
+            if (widget.visible && widget.quality != GlassQuality.premium)
               Positioned.fill(
                 child: Align(
                   alignment: targetAlignment,
@@ -645,6 +651,58 @@ class TabIndicatorState extends State<TabIndicator>
     required double glassRadius,
     required Color indicatorColor,
   }) {
+    final effRadius = thickness < 1 ? backgroundRadius : glassRadius;
+    final foregroundContent = widget.quality == GlassQuality.premium
+        ? Container(
+            padding: widget.tabPadding,
+            height: widget.barHeight,
+            child: widget.foregroundBuilder?.call(
+                  context,
+                  thickness,
+                  alignment,
+                ) ??
+                widget.childUnselected,
+          )
+        : Stack(
+            children: [
+              ClipPath(
+                clipper: JellyClipper(
+                  itemCount: widget.tabCount,
+                  alignment: alignment,
+                  thickness: thickness,
+                  expansion: widget.indicatorExpansion,
+                  transform: jellyTransform,
+                  borderRadius: effRadius,
+                  inverse: true,
+                ),
+                child: Container(
+                  padding: widget.tabPadding,
+                  height: widget.barHeight,
+                  child: widget.childUnselected,
+                ),
+              ),
+              ClipPath(
+                clipper: JellyClipper(
+                  itemCount: widget.tabCount,
+                  alignment: alignment,
+                  thickness: thickness,
+                  expansion: widget.indicatorExpansion,
+                  transform: jellyTransform,
+                  borderRadius: effRadius,
+                ),
+                child: Container(
+                  padding: widget.tabPadding,
+                  height: widget.barHeight,
+                  child: widget.selectedTabBuilder(
+                    context,
+                    thickness,
+                    alignment,
+                  ),
+                ),
+              ),
+            ],
+          );
+
     return SizedBox(
       height: widget.barHeight,
       child: _wrapWithGlow(
@@ -673,63 +731,20 @@ class TabIndicatorState extends State<TabIndicator>
               isBackgroundIndicator: false,
               paintBackground: true,
               paintGlass: false,
-              borderRadius: thickness < 1 ? backgroundRadius : glassRadius,
+              borderRadius: effRadius,
               padding: const EdgeInsets.all(4),
               expansion: widget.indicatorExpansion,
               glassSettings: widget.indicatorSettings,
               backgroundKey: widget.backgroundKey,
             ),
 
-            // 2. Icon Content Layer (Unselected + Selected combined for refraction)
-            // Both layers merged into a single RepaintBoundary BEFORE the glass
-            // indicator so the glass lens correctly refracts both icon states
-            // without white bleed-through.
+            // 2. Foreground texture source. Premium captures the complete
+            // tab row so shader refraction can sample a continuous color layer.
+            // Lower tiers keep the clipped dual-layer masking path.
             Positioned.fill(
               child: RepaintBoundary(
-                key: _foregroundSdfKey,
-                child: Stack(
-                  children: [
-                    // Unselected (inverse clipped — visible OUTSIDE pill)
-                    ClipPath(
-                      clipper: JellyClipper(
-                        itemCount: widget.tabCount,
-                        alignment: alignment,
-                        thickness: thickness,
-                        expansion: widget.indicatorExpansion,
-                        transform: jellyTransform,
-                        borderRadius:
-                            thickness < 1 ? backgroundRadius : glassRadius,
-                        inverse: true,
-                      ),
-                      child: Container(
-                        padding: widget.tabPadding,
-                        height: widget.barHeight,
-                        child: widget.childUnselected,
-                      ),
-                    ),
-                    // Selected (forward clipped — visible INSIDE pill)
-                    ClipPath(
-                      clipper: JellyClipper(
-                        itemCount: widget.tabCount,
-                        alignment: alignment,
-                        thickness: thickness,
-                        expansion: widget.indicatorExpansion,
-                        transform: jellyTransform,
-                        borderRadius:
-                            thickness < 1 ? backgroundRadius : glassRadius,
-                      ),
-                      child: Container(
-                        padding: widget.tabPadding,
-                        height: widget.barHeight,
-                        child: widget.selectedTabBuilder(
-                          context,
-                          thickness,
-                          alignment,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                key: _foregroundKey,
+                child: foregroundContent,
               ),
             ),
 
@@ -745,15 +760,13 @@ class TabIndicatorState extends State<TabIndicator>
               isBackgroundIndicator: false,
               paintBackground: false,
               paintGlass: true,
-              borderRadius: thickness < 1 ? backgroundRadius : glassRadius,
+              borderRadius: effRadius,
               padding: const EdgeInsets.all(4),
               expansion: widget.indicatorExpansion,
               glassSettings: widget.indicatorSettings,
               backgroundKey: widget.backgroundKey,
-              foregroundSdfKey: _foregroundSdfKey,
-              foregroundColor: const Color(0xFFFFFFFF),
-              foregroundSdfRevision:
-                  Object.hash(widget.tabIndex, widget.tabCount),
+              foregroundKey: _foregroundKey,
+              foregroundRevision: Object.hash(widget.tabIndex, widget.tabCount),
             ),
           ],
         ),

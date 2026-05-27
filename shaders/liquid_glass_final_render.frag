@@ -8,7 +8,7 @@
 //   R: normal.x  [-1, 1] → [0, 1]
 //   G: normal.y  [-1, 1] → [0, 1]
 //   B: height    normalized to thickness
-//   A: foreground alpha (SDF AA)
+//   A: coverage alpha
 
 #version 460 core
 precision highp float; // mediump causes colour banding (10-bit mantissa on mobile)
@@ -33,11 +33,11 @@ precision highp float; // mediump causes colour banding (10-bit mantissa on mobi
 // Slot 22: uCompactLensEdgePull
 // Slot 23: uCompactLensEdgeBlur
 // Slot 24: uCompactLensInnerShadow
-// Slots 25-28: uForegroundColor
-// Slot 29: uMSDFPxRange
-// Slot 30: uHasForegroundMSDF
-// Slots 31-32: uForegroundOffset
-// Slots 33-34: uForegroundSize
+// Slot 25: uHasForegroundTexture
+// Slots 26-27: uForegroundScreenOrigin
+// Slots 28-29: uForegroundScreenSize
+// Slots 30-31: uForegroundAtlasSize
+// Slot 32: uForegroundSupersample
 uniform vec2 uSize;          // physical-pixel size of the backdrop capture
 uniform vec2 uGeometryOffset;
 uniform vec2 uGeometrySize;
@@ -53,30 +53,27 @@ uniform float uCompactLensHeightPinch;
 uniform float uCompactLensEdgePull;
 uniform float uCompactLensEdgeBlur;
 uniform float uCompactLensInnerShadow;
-uniform vec4 uForegroundColor;
-uniform float uMSDFPxRange;
-uniform float uHasForegroundMSDF;
-uniform vec2 uForegroundOffset;
-uniform vec2 uForegroundSize;
+uniform float uHasForegroundTexture;
+uniform vec2 uForegroundScreenOrigin;
+uniform vec2 uForegroundScreenSize;
+uniform vec2 uForegroundAtlasSize;
+uniform float uForegroundSupersample;
 
 uniform sampler2D uBackgroundTexture;
 uniform sampler2D uGeometryTexture;
-uniform sampler2D uForegroundMSDFTexture;
+uniform sampler2D uForegroundTexture;
 
 layout(location = 0) out vec4 fragColor;
 
-float median3(vec3 v) {
-    return max(min(v.r, v.g), min(max(v.r, v.g), v.b));
+vec4 sampleForegroundRGBA(vec2 uv) {
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+        return vec4(0.0);
+    }
+    return texture(uForegroundTexture, uv);
 }
 
-float sampleForegroundMSDFAlpha(vec2 uv, float pxRange) {
-    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
-        return 0.0;
-    }
-    vec3 msdf = texture(uForegroundMSDFTexture, uv).rgb;
-    float sd = median3(msdf) - 0.5;
-    float screenPxRange = max(0.5 / max(pxRange, 1e-4), 1e-4);
-    return smoothstep(-screenPxRange, screenPxRange, sd);
+vec3 foregroundStraightRGB(vec4 c) {
+    return c.a > 1e-4 ? clamp(c.rgb / c.a, vec3(0.0), vec3(1.0)) : vec3(0.0);
 }
 
 void main() {
@@ -434,11 +431,11 @@ void main() {
 
     float alpha = geometryData.a;
 
-    if (uHasForegroundMSDF > 0.5 &&
-        uForegroundColor.a > 0.001 &&
-        uForegroundSize.x > 1.0 &&
-        uForegroundSize.y > 1.0) {
-        vec2 foregroundUV = (fragCoord - uForegroundOffset) / uForegroundSize;
+    if (uHasForegroundTexture > 0.5 &&
+        uForegroundScreenSize.x > 1.0 &&
+        uForegroundScreenSize.y > 1.0) {
+        vec2 foregroundUV =
+            (fragCoord - uForegroundScreenOrigin) / uForegroundScreenSize;
         #ifdef IMPELLER_TARGET_OPENGLES
             foregroundUV.y = 1.0 - foregroundUV.y;
         #endif
@@ -447,41 +444,49 @@ void main() {
             !any(greaterThan(foregroundUV, vec2(1.0)))) {
             vec2 contentDisp = displacement;
             float contentLen = length(contentDisp);
-            float maxContentDispPx = 6.0;
+            float maxContentDispPx = 14.0;
             if (contentLen > maxContentDispPx) {
                 contentDisp *= maxContentDispPx / max(contentLen, 1e-4);
                 contentLen = maxContentDispPx;
             }
 
-            vec2 invForegroundSize = 1.0 / uForegroundSize;
+            vec2 invForegroundSize = 1.0 / uForegroundScreenSize;
             vec2 contentUV = foregroundUV + contentDisp * invForegroundSize;
             vec2 dir = contentLen > 1e-4
                 ? contentDisp / contentLen
                 : vec2(0.0);
-            float caPx = min(contentLen * 0.04, 0.55);
+            float caPx = min(contentLen * 0.035, 0.75);
             vec2 caUV = dir * caPx * invForegroundSize;
 
-            float mainA = sampleForegroundMSDFAlpha(
-                contentUV,
-                uMSDFPxRange
+            vec4 center = sampleForegroundRGBA(contentUV);
+            vec2 atlasTexel = 1.0 / max(uForegroundAtlasSize, vec2(1.0));
+            vec2 physicalPixelUV = max(
+                invForegroundSize,
+                atlasTexel * max(uForegroundSupersample, 1.0)
             );
-            float edgeA = mainA * (1.0 - mainA) * 4.0;
-            float aR = sampleForegroundMSDFAlpha(
-                contentUV + caUV,
-                uMSDFPxRange
-            );
-            float aB = sampleForegroundMSDFAlpha(
-                contentUV - caUV,
-                uMSDFPxRange
+            vec2 sharpenUV = physicalPixelUV;
+            vec4 blur4 = (
+                sampleForegroundRGBA(contentUV + vec2(sharpenUV.x, 0.0)) +
+                sampleForegroundRGBA(contentUV - vec2(sharpenUV.x, 0.0)) +
+                sampleForegroundRGBA(contentUV + vec2(0.0, sharpenUV.y)) +
+                sampleForegroundRGBA(contentUV - vec2(0.0, sharpenUV.y))
+            ) * 0.25;
+            float edgeA = clamp(center.a * (1.0 - center.a) * 4.0, 0.0, 1.0);
+            vec4 foregroundG = clamp(
+                mix(center, center + (center - blur4) * 0.35, edgeA),
+                vec4(0.0),
+                vec4(1.0)
             );
 
-            vec3 clean = vec3(mainA);
-            vec3 fringe = vec3(aR, mainA, aB);
-            vec3 alphaRGB = mix(clean, fringe, edgeA * 0.65);
-            vec3 foregroundRGB = uForegroundColor.rgb * alphaRGB;
-            float foregroundA =
-                max(max(alphaRGB.r, alphaRGB.g), alphaRGB.b) *
-                uForegroundColor.a;
+            vec4 foregroundR = sampleForegroundRGBA(contentUV + caUV);
+            vec4 foregroundB = sampleForegroundRGBA(contentUV - caUV);
+            vec3 rgbG = foregroundStraightRGB(foregroundG);
+            vec3 rgbR = foregroundStraightRGB(foregroundR);
+            vec3 rgbB = foregroundStraightRGB(foregroundB);
+            vec3 rgbNoCA = rgbG;
+            vec3 rgbCA = vec3(rgbR.r, rgbG.g, rgbB.b);
+            vec3 foregroundRGB = mix(rgbNoCA, rgbCA, edgeA * 0.70);
+            float foregroundA = foregroundG.a;
 
             finalColor.rgb = mix(finalColor.rgb, foregroundRGB, foregroundA);
             alpha = max(alpha, foregroundA);

@@ -11,7 +11,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/scheduler.dart';
 import '../../widgets/interactive/liquid_glass_scope.dart';
 import 'inherited_liquid_glass.dart';
-import 'foreground_sdf_atlas.dart';
+import 'foreground_color_atlas.dart';
 
 import '../../types/glass_quality.dart';
 import 'adaptive_glass.dart';
@@ -39,9 +39,8 @@ class GlassEffect extends StatefulWidget {
     this.rimThickness = 0.5,
     this.rimSmoothing = 1.5,
     this.clipExpansion = EdgeInsets.zero,
-    this.foregroundSdfKey,
-    this.foregroundColor = Colors.white,
-    this.foregroundSdfRevision = 0,
+    this.foregroundKey,
+    this.foregroundRevision = 0,
     super.key,
   });
 
@@ -84,16 +83,13 @@ class GlassEffect extends StatefulWidget {
   /// Defaults to [EdgeInsets.zero] — no extra cost for static glass.
   final EdgeInsets clipExpansion;
 
-  /// Optional RepaintBoundary whose text/icon alpha is converted to an
-  /// MSDF-compatible foreground distance atlas for premium refraction.
-  final GlobalKey? foregroundSdfKey;
-
-  /// Color used by the premium shader when reconstructing [foregroundSdfKey].
-  final Color foregroundColor;
+  /// Optional RepaintBoundary whose text/icon layer is captured as a
+  /// high-resolution RGBA atlas for premium foreground refraction.
+  final GlobalKey? foregroundKey;
 
   /// Caller-controlled cache revision for foreground content changes that do
   /// not affect size or position, such as selected-tab icon swaps.
-  final int foregroundSdfRevision;
+  final int foregroundRevision;
 
   static ui.FragmentProgram? _cachedProgram;
   static bool _isPreparing = false;
@@ -153,7 +149,7 @@ class _GlassEffectState extends State<GlassEffect>
   Offset? _lastCapturePosition;
   // Web only: guards against overlapping async captures.
   bool _isCapturingAsync = false;
-  ForegroundSdfSnapshot? _foregroundSdf;
+  ForegroundColorSnapshot? _foregroundTexture;
   Object? _foregroundCaptureSignature;
   bool _isCapturingForeground = false;
 
@@ -184,9 +180,8 @@ class _GlassEffectState extends State<GlassEffect>
         _initShader();
       }
     }
-    if (oldWidget.foregroundSdfKey != widget.foregroundSdfKey ||
-        oldWidget.foregroundSdfRevision != widget.foregroundSdfRevision ||
-        oldWidget.foregroundColor != widget.foregroundColor) {
+    if (oldWidget.foregroundKey != widget.foregroundKey ||
+        oldWidget.foregroundRevision != widget.foregroundRevision) {
       _foregroundCaptureSignature = null;
       _scheduleForegroundCapture();
     }
@@ -205,7 +200,7 @@ class _GlassEffectState extends State<GlassEffect>
   GlobalKey? get _effectiveKey => widget.backgroundKey ?? _cachedScopeKey;
 
   void _scheduleForegroundCapture() {
-    final key = widget.foregroundSdfKey;
+    final key = widget.foregroundKey;
     if (key == null || _isCapturingForeground) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -220,21 +215,22 @@ class _GlassEffectState extends State<GlassEffect>
       final origin = boundary.localToGlobal(Offset.zero);
       final signature = Object.hash(
         key,
-        widget.foregroundSdfRevision,
+        widget.foregroundRevision,
         boundary.size.width,
         boundary.size.height,
         origin.dx,
         origin.dy,
         dpr,
       );
-      if (signature == _foregroundCaptureSignature && _foregroundSdf != null) {
+      if (signature == _foregroundCaptureSignature &&
+          _foregroundTexture != null) {
         return;
       }
 
       _isCapturingForeground = true;
-      ForegroundSdfAtlas.capture(
+      ForegroundColorAtlas.capture(
         boundary,
-        pixelRatio: dpr,
+        devicePixelRatio: dpr,
       ).catchError((Object _) {
         return null;
       }).then((snapshot) {
@@ -242,9 +238,9 @@ class _GlassEffectState extends State<GlassEffect>
           snapshot?.dispose();
           return;
         }
-        final oldSnapshot = _foregroundSdf;
+        final oldSnapshot = _foregroundTexture;
         setState(() {
-          _foregroundSdf = snapshot;
+          _foregroundTexture = snapshot;
           _foregroundCaptureSignature = signature;
         });
         oldSnapshot?.dispose();
@@ -423,7 +419,7 @@ class _GlassEffectState extends State<GlassEffect>
   void dispose() {
     _ticker.dispose();
     _backgroundImage?.dispose();
-    _foregroundSdf?.dispose();
+    _foregroundTexture?.dispose();
     _localShader?.dispose();
     _localShader = null;
     super.dispose();
@@ -486,8 +482,7 @@ class _GlassEffectState extends State<GlassEffect>
         shape: widget.shape,
         settings: widget.settings,
         clipExpansion: widget.clipExpansion,
-        foregroundSdf: _foregroundSdf,
-        foregroundColor: widget.foregroundColor,
+        foregroundTexture: _foregroundTexture,
         child: widget.child,
       );
     }

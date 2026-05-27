@@ -10,7 +10,7 @@ import '../liquid_glass_renderer.dart';
 import '../internal/render_liquid_glass_geometry.dart';
 import '../internal/snap_rect_to_pixels.dart';
 import '../logging.dart';
-import '../../../widgets/shared/foreground_sdf_atlas.dart';
+import '../../../widgets/shared/foreground_color_atlas.dart';
 import 'package:meta/meta.dart';
 
 /// A render object that can assemble [RenderLiquidGlassGeometry] shapes and
@@ -23,13 +23,11 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
     required LiquidGlassSettings settings,
     required double devicePixelRatio,
     BackdropKey? backdropKey,
-    ForegroundSdfSnapshot? foregroundSdf,
-    Color foregroundColor = Colors.white,
+    ForegroundColorSnapshot? foregroundTexture,
   })  : _settings = settings,
         _devicePixelRatio = devicePixelRatio,
         _backdropKey = backdropKey,
-        _foregroundSdf = foregroundSdf,
-        _foregroundColor = foregroundColor,
+        _foregroundTexture = foregroundTexture,
         _link = link,
         _cachedLightDir = Offset(
           cos(settings.lightAngle),
@@ -96,19 +94,11 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
     markNeedsPaint();
   }
 
-  ForegroundSdfSnapshot? _foregroundSdf;
-  ForegroundSdfSnapshot? get foregroundSdf => _foregroundSdf;
-  set foregroundSdf(ForegroundSdfSnapshot? value) {
-    if (_foregroundSdf == value) return;
-    _foregroundSdf = value;
-    markNeedsPaint();
-  }
-
-  Color _foregroundColor;
-  Color get foregroundColor => _foregroundColor;
-  set foregroundColor(Color value) {
-    if (_foregroundColor == value) return;
-    _foregroundColor = value;
+  ForegroundColorSnapshot? _foregroundTexture;
+  ForegroundColorSnapshot? get foregroundTexture => _foregroundTexture;
+  set foregroundTexture(ForegroundColorSnapshot? value) {
+    if (_foregroundTexture == value) return;
+    _foregroundTexture = value;
     markNeedsPaint();
   }
 
@@ -300,18 +290,18 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
               ..setOffset(activeBounds.topLeft * devicePixelRatio)
               ..setSize(activeBounds.size * devicePixelRatio);
           })
-          // Slots 25-34: optional foreground SDF/MSDF atlas.
+          // Slots 25-32: optional foreground RGBA atlas.
           ..setFloatUniforms(initialIndex: 25, (value) {
-            final foreground = foregroundSdf;
+            final foreground = foregroundTexture;
             value
-              ..setColor(foregroundColor)
-              ..setFloat(foreground?.pxRange ?? 1.0)
               ..setFloat(foreground == null ? 0.0 : 1.0)
-              ..setOffset(foreground?.origin ?? Offset.zero)
-              ..setSize(foreground?.size ?? const Size(1.0, 1.0));
+              ..setOffset(foreground?.screenOriginPx ?? Offset.zero)
+              ..setSize(foreground?.screenSizePx ?? const Size(1.0, 1.0))
+              ..setSize(foreground?.atlasSizePx ?? const Size(1.0, 1.0))
+              ..setFloat(foreground?.supersample ?? 1.0);
           })
           ..setImageSampler(1, geometryImage)
-          ..setImageSampler(2, foregroundSdf?.image ?? geometryImage);
+          ..setImageSampler(2, foregroundTexture?.image ?? geometryImage);
         paintLiquidGlass(
           context,
           offset,
@@ -425,8 +415,8 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
   /// The geometry is recorded WITHOUT applying [matteTransform] (position,
   /// jelly scale, global screen offset). This means:
   ///
-  /// - The image represents the pill SDF purely in the render object's own
-  ///   coordinate space, at its current LOCAL size.
+  /// - The image represents the pill geometry purely in the render object's
+  ///   own coordinate space, at its current LOCAL size.
   /// - [matteTransform] is applied SYNCHRONOUSLY at paint time to derive the
   ///   screen-space [uGeometryOffset] / [uGeometrySize] uniforms — no 1-2
   ///   frame async lag, no correction needed.
