@@ -331,15 +331,19 @@ class _VectorForegroundPainter extends CustomPainter {
         text: TextSpan(text: iconText, style: iconStyle),
         textDirection: textDirection,
         maxLines: 1,
+        strutStyle: StrutStyle(
+          fontSize: iconSize,
+          height: 1.0,
+          forceStrutHeight: true,
+        ),
       )..layout();
       final iconRun = _GlyphRun(
         text: iconText,
-        style: TextStyle(
-          inherit: false,
-          color: color,
+        style: iconStyle,
+        strutStyle: StrutStyle(
           fontSize: iconSize,
-          fontFamily: iconData.fontFamily,
-          package: iconData.fontPackage,
+          height: 1.0,
+          forceStrutHeight: true,
         ),
         size: Size.square(iconSize),
         paintOffset: Offset(
@@ -348,7 +352,13 @@ class _VectorForegroundPainter extends CustomPainter {
         ),
         localDx: 0,
       );
-      _paintGlyphRun(canvas, size, iconRun, Offset(rect.center.dx, y), color);
+      _paintGlyphRun(
+        canvas,
+        size,
+        iconRun,
+        Offset(rect.center.dx - iconSize / 2, y),
+        color,
+      );
       y += iconSize + gap;
     }
 
@@ -368,28 +378,28 @@ class _VectorForegroundPainter extends CustomPainter {
     TextStyle style, {
     required double maxWidth,
   }) {
-    final clusters = text.characters.toList(growable: false);
-    final runs = <_GlyphRun>[];
-    var usedWidth = 0.0;
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: textDirection,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      ellipsis: '',
+    )..layout(maxWidth: maxWidth);
 
-    for (final cluster in clusters) {
-      final painter = TextPainter(
-        text: TextSpan(text: cluster, style: style),
-        textDirection: textDirection,
-        maxLines: 1,
-      )..layout();
-      if (usedWidth + painter.width > maxWidth && runs.isNotEmpty) break;
-      runs.add(_GlyphRun(
-        text: cluster,
-        style: style,
-        size: Size(painter.width, painter.height),
-        paintOffset: Offset.zero,
-        localDx: usedWidth,
-      ));
-      usedWidth += painter.width;
+    if (painter.width <= 0.0 || painter.height <= 0.0) {
+      return const <_GlyphRun>[];
     }
 
-    return runs;
+    return [
+      _GlyphRun(
+        text: text,
+        style: style,
+        strutStyle: null,
+        size: Size(painter.width, painter.height),
+        paintOffset: Offset.zero,
+        localDx: 0,
+      ),
+    ];
   }
 
   void _paintGlyphRun(
@@ -407,20 +417,21 @@ class _VectorForegroundPainter extends CustomPainter {
       warped.dy - run.size.height / 2,
     );
 
-    if (edge > 0.01) {
+    final fringeEdge = edge * lens.effectAmount;
+    if (fringeEdge > 0.01) {
       final normal = lens.normalAt(center, size);
-      final fringePx = math.min(0.65, 0.18 + edge * 0.42);
+      final fringePx = math.min(0.65, 0.18 + fringeEdge * 0.42);
       _paintText(
         canvas,
         run,
         offset + normal * fringePx,
-        Color.fromRGBO(255, 42, 34, 0.11 * edge),
+        Color.fromRGBO(255, 42, 34, 0.11 * fringeEdge),
       );
       _paintText(
         canvas,
         run,
         offset - normal * fringePx,
-        Color.fromRGBO(32, 116, 255, 0.11 * edge),
+        Color.fromRGBO(32, 116, 255, 0.11 * fringeEdge),
       );
     }
 
@@ -435,6 +446,7 @@ class _VectorForegroundPainter extends CustomPainter {
       ),
       textDirection: textDirection,
       maxLines: 1,
+      strutStyle: run.strutStyle,
     )..layout();
     painter.paint(canvas, offset + run.paintOffset);
   }
@@ -470,6 +482,7 @@ class _GlyphRun {
   const _GlyphRun({
     required this.text,
     required this.style,
+    required this.strutStyle,
     required this.size,
     required this.paintOffset,
     required this.localDx,
@@ -477,6 +490,7 @@ class _GlyphRun {
 
   final String text;
   final TextStyle style;
+  final StrutStyle? strutStyle;
   final Size size;
   final Offset paintOffset;
   final double localDx;
@@ -541,6 +555,8 @@ class _LensField {
   final double? indicatorLeft;
   final double? indicatorWidth;
 
+  double get effectAmount => _smoothstep(0.05, 0.65, thickness);
+
   Rect rectFor(Size size) {
     if (kind == _LensKind.bottomBar) {
       final tabWidth = size.width / itemCount;
@@ -570,7 +586,7 @@ class _LensField {
 
     final normal = normalAt(p, size);
     final rect = rectFor(size);
-    final strength = edge * edge * (0.10 + thickness * 0.08);
+    final strength = edge * edge * effectAmount * 0.16;
     return p + normal * rect.height * strength;
   }
 
