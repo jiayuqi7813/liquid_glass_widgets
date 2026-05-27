@@ -442,7 +442,10 @@ class _VectorForegroundPainter extends CustomPainter {
     final edge = lens.edgeAmount(center, size);
     final groupCoverage = lens.coverageAmount(groupCenter, size);
     final groupScale = 1.0 + groupCoverage * lens.effectAmount * 0.05;
-    final groupDelta = lens.warpPoint(groupCenter, size) - groupCenter;
+    // Keep the foreground anchored to the tab layout. The glass owns the
+    // background refraction; foreground gets only local magnification/CA so
+    // icons and labels do not jump when the lens edge crosses their centers.
+    const groupDelta = Offset.zero;
     final warped = center + groupDelta;
     final scaledSize = run.size * groupScale;
     final offset = Offset(
