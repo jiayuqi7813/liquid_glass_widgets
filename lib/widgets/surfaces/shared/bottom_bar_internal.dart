@@ -560,10 +560,12 @@ class TabIndicatorState extends State<TabIndicator>
     required double glassRadius,
     required Color indicatorColor,
   }) {
+    final effRadius = thickness < 1 ? backgroundRadius : glassRadius;
     final foregroundContent = widget.quality == GlassQuality.premium
         ? (widget.foregroundBuilder?.call(context, thickness, alignment) ??
             widget.childUnselected)
         : widget.childUnselected;
+    final foregroundRevision = _foregroundRevision;
 
     return SizedBox(
       height: widget.barHeight,
@@ -582,17 +584,16 @@ class TabIndicatorState extends State<TabIndicator>
               ),
             ),
 
-            // Unselected icons — always visible, all tabs in unselected style.
-            // The glass indicator refracts this layer as the pill moves over it.
-            Positioned.fill(
-              child: RepaintBoundary(
-                key: _foregroundKey,
-                child: Container(
-                  padding: widget.tabPadding,
-                  child: foregroundContent,
+            if (widget.quality != GlassQuality.premium)
+              Positioned.fill(
+                child: RepaintBoundary(
+                  key: _foregroundKey,
+                  child: Container(
+                    padding: widget.tabPadding,
+                    child: foregroundContent,
+                  ),
                 ),
               ),
-            ),
 
             // Glass indicator — on top so it refracts the icon layer beneath.
             if (widget.visible && thickness > 0.05)
@@ -604,14 +605,27 @@ class TabIndicatorState extends State<TabIndicator>
                 quality: widget.quality,
                 indicatorColor: indicatorColor,
                 isBackgroundIndicator: false,
-                borderRadius: thickness < 1 ? backgroundRadius : glassRadius,
+                borderRadius: effRadius,
                 padding: const EdgeInsets.all(4),
                 expansion: widget.indicatorExpansion,
                 glassSettings: widget.indicatorSettings,
                 backgroundKey: widget.backgroundKey,
                 foregroundKey: _foregroundKey,
-                foregroundRevision:
-                    Object.hash(widget.tabIndex, widget.tabCount),
+                foregroundRevision: foregroundRevision,
+              ),
+
+            if (widget.quality == GlassQuality.premium)
+              Positioned.fill(
+                child: _buildVisibleForegroundSource(
+                  foregroundContent: Container(
+                    padding: widget.tabPadding,
+                    child: foregroundContent,
+                  ),
+                  alignment: alignment,
+                  thickness: thickness,
+                  jellyTransform: Matrix4.identity(),
+                  borderRadius: effRadius,
+                ),
               ),
 
             // Persistent selected-icon overlay — always rendered at the TARGET
@@ -652,6 +666,7 @@ class TabIndicatorState extends State<TabIndicator>
     required Color indicatorColor,
   }) {
     final effRadius = thickness < 1 ? backgroundRadius : glassRadius;
+    final foregroundRevision = _foregroundRevision;
     final foregroundContent = widget.quality == GlassQuality.premium
         ? Container(
             padding: widget.tabPadding,
@@ -738,18 +753,16 @@ class TabIndicatorState extends State<TabIndicator>
               backgroundKey: widget.backgroundKey,
             ),
 
-            // 2. Foreground texture source. Premium captures the complete
-            // tab row so shader refraction can sample a continuous color layer.
-            // Lower tiers keep the clipped dual-layer masking path.
-            Positioned.fill(
-              child: RepaintBoundary(
-                key: _foregroundKey,
-                child: foregroundContent,
+            if (widget.quality != GlassQuality.premium)
+              Positioned.fill(
+                child: RepaintBoundary(
+                  key: _foregroundKey,
+                  child: foregroundContent,
+                ),
               ),
-            ),
 
-            // 3. Moving Glass Indicator Layer — on top so it refracts
-            // the merged icon RepaintBoundary beneath it.
+            // 3. Moving Glass Indicator Layer. Premium paints this before the
+            // visible foreground source so source text does not enter backdrop.
             AnimatedGlassIndicator(
               velocity: velocity,
               itemCount: widget.tabCount,
@@ -766,11 +779,64 @@ class TabIndicatorState extends State<TabIndicator>
               glassSettings: widget.indicatorSettings,
               backgroundKey: widget.backgroundKey,
               foregroundKey: _foregroundKey,
-              foregroundRevision: Object.hash(widget.tabIndex, widget.tabCount),
+              foregroundRevision: foregroundRevision,
             ),
+
+            if (widget.quality == GlassQuality.premium)
+              Positioned.fill(
+                child: _buildVisibleForegroundSource(
+                  foregroundContent: foregroundContent,
+                  alignment: alignment,
+                  thickness: thickness,
+                  jellyTransform: jellyTransform,
+                  borderRadius: effRadius,
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+
+  int get _foregroundRevision => Object.hashAll([
+        widget.tabIndex,
+        widget.tabCount,
+        widget.visible,
+        widget.quality,
+        widget.childUnselected.hashCode,
+        widget.selectedTabBuilder.hashCode,
+      ]);
+
+  Widget _buildVisibleForegroundSource({
+    required Widget foregroundContent,
+    required Alignment alignment,
+    required double thickness,
+    required Matrix4 jellyTransform,
+    required double borderRadius,
+  }) {
+    final source = RepaintBoundary(
+      key: _foregroundKey,
+      child: foregroundContent,
+    );
+
+    final shouldHideInsideLens = widget.quality == GlassQuality.premium &&
+        widget.visible &&
+        thickness > 0.05;
+    if (!shouldHideInsideLens) {
+      return source;
+    }
+
+    return ClipPath(
+      clipper: JellyClipper(
+        itemCount: widget.tabCount,
+        alignment: alignment,
+        thickness: thickness,
+        expansion: widget.indicatorExpansion,
+        transform: jellyTransform,
+        borderRadius: borderRadius,
+        inverse: true,
+      ),
+      child: source,
     );
   }
 }

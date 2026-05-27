@@ -582,12 +582,11 @@ class TabBarContentState extends State<TabBarContent>
     final foregroundRevision = Object.hashAll([
       widget.selectedIndex,
       widget.isScrollable,
+      widget.quality,
       for (final tab in widget.tabs) tab.hashCode,
     ]);
-    final foregroundTextureLayer = RepaintBoundary(
-      key: _foregroundKey,
-      child: tabLabels,
-    );
+    final foregroundTextureLayer =
+        RepaintBoundary(key: _foregroundKey, child: tabLabels);
 
     return RawGestureDetector(
       gestures: {
@@ -687,6 +686,30 @@ class TabBarContentState extends State<TabBarContent>
                 final physics = _isDraggingIndicator
                     ? const NeverScrollableScrollPhysics()
                     : const ClampingScrollPhysics();
+                final bool isPremiumQuality =
+                    widget.quality == GlassQuality.premium;
+                final foregroundScrollView =
+                    NotificationListener<ScrollStartNotification>(
+                  onNotification: (_) {
+                    if (_isDown) setState(() => _isDown = false);
+                    return false;
+                  },
+                  child: SingleChildScrollView(
+                    controller: widget.scrollController,
+                    scrollDirection: Axis.horizontal,
+                    physics: physics,
+                    child: isPremiumQuality
+                        ? _buildVisibleForegroundLayer(
+                            child: tabLabels,
+                            thickness: thickness,
+                            indicatorLeft: currentValue,
+                            indicatorWidth: _indWidthSpring.value,
+                            borderRadius:
+                                widget.indicatorBorderRadius?.topLeft.x ?? 16,
+                          )
+                        : foregroundTextureLayer,
+                  ),
+                );
 
                 return Stack(
                   children: [
@@ -698,28 +721,29 @@ class TabBarContentState extends State<TabBarContent>
                           if (canShowIndicator)
                             buildIndicator(
                                 paintBackground: true, paintGlass: false),
-                          NotificationListener<ScrollStartNotification>(
-                            onNotification: (_) {
-                              if (_isDown) setState(() => _isDown = false);
-                              return false;
-                            },
-                            child: SingleChildScrollView(
-                              controller: widget.scrollController,
-                              scrollDirection: Axis.horizontal,
-                              physics: physics,
-                              child: foregroundTextureLayer,
-                            ),
-                          ),
+                          if (!isPremiumQuality) foregroundScrollView,
                         ],
                       ),
                     ),
                     if (canShowIndicator)
                       buildIndicator(paintBackground: false, paintGlass: true),
+                    if (isPremiumQuality)
+                      ClipRRect(
+                        borderRadius:
+                            widget.tabBarBorderRadius ?? BorderRadius.zero,
+                        child: foregroundScrollView,
+                      ),
                   ],
                 );
               } else {
                 final bool isPremiumQuality =
                     widget.quality == GlassQuality.premium;
+                final visibleForegroundLayer = _buildVisibleForegroundLayer(
+                  child: tabLabels,
+                  thickness: thickness,
+                  alignment: alignment,
+                  borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
+                );
 
                 return Stack(
                   clipBehavior: Clip.none,
@@ -729,12 +753,13 @@ class TabBarContentState extends State<TabBarContent>
                         paintBackground: true,
                         paintGlass: !isPremiumQuality,
                       ),
-                    foregroundTextureLayer,
+                    if (!isPremiumQuality) foregroundTextureLayer,
                     if (canShowIndicator && isPremiumQuality)
                       buildIndicator(
                         paintBackground: false,
                         paintGlass: true,
                       ),
+                    if (isPremiumQuality) visibleForegroundLayer,
                   ],
                 );
               }
@@ -742,6 +767,33 @@ class TabBarContentState extends State<TabBarContent>
           );
         },
       ),
+    );
+  }
+
+  Widget _buildVisibleForegroundLayer({
+    required Widget child,
+    required double thickness,
+    required double borderRadius,
+    Alignment? alignment,
+    double? indicatorLeft,
+    double? indicatorWidth,
+  }) {
+    final source = RepaintBoundary(key: _foregroundKey, child: child);
+    final shouldHideInsideLens =
+        widget.quality == GlassQuality.premium && thickness > 0.05;
+    if (!shouldHideInsideLens) return source;
+
+    return ClipPath(
+      clipper: _InverseTabIndicatorClipper(
+        itemCount: widget.tabs.length,
+        alignment: alignment,
+        indicatorLeft: indicatorLeft,
+        indicatorWidth: indicatorWidth,
+        borderRadius: borderRadius,
+        expansion: widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
+        thickness: thickness,
+      ),
+      child: source,
     );
   }
 
@@ -807,6 +859,57 @@ class TabBarContentState extends State<TabBarContent>
           .map((tab) => tab is KeyedSubtree ? Expanded(child: tab) : tab)
           .toList(),
     );
+  }
+}
+
+class _InverseTabIndicatorClipper extends CustomClipper<Path> {
+  const _InverseTabIndicatorClipper({
+    required this.itemCount,
+    required this.borderRadius,
+    required this.expansion,
+    required this.thickness,
+    this.alignment,
+    this.indicatorLeft,
+    this.indicatorWidth,
+  });
+
+  final int itemCount;
+  final Alignment? alignment;
+  final double? indicatorLeft;
+  final double? indicatorWidth;
+  final double borderRadius;
+  final double expansion;
+  final double thickness;
+
+  @override
+  Path getClip(Size size) {
+    final slotWidth = indicatorWidth ?? size.width / itemCount;
+    final left = indicatorLeft ??
+        ((alignment?.x ?? 0.0) + 1.0) * 0.5 * (size.width - slotWidth);
+    final grow = expansion * thickness;
+    final lensRect =
+        Rect.fromLTWH(left, 0, slotWidth, size.height).inflate(grow);
+    final path = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size)
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          lensRect,
+          Radius.circular(borderRadius + grow),
+        ),
+      );
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant _InverseTabIndicatorClipper oldClipper) {
+    return itemCount != oldClipper.itemCount ||
+        alignment != oldClipper.alignment ||
+        indicatorLeft != oldClipper.indicatorLeft ||
+        indicatorWidth != oldClipper.indicatorWidth ||
+        borderRadius != oldClipper.borderRadius ||
+        expansion != oldClipper.expansion ||
+        thickness != oldClipper.thickness;
   }
 }
 
