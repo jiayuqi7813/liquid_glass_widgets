@@ -319,8 +319,21 @@ class _VectorForegroundPainter extends CustomPainter {
     var y = rect.center.dy - contentHeight / 2;
 
     if (hasIcon) {
+      final iconText = String.fromCharCode(iconData.codePoint);
+      final iconStyle = TextStyle(
+        inherit: false,
+        color: color,
+        fontSize: iconSize,
+        fontFamily: iconData.fontFamily,
+        package: iconData.fontPackage,
+      );
+      final iconPainter = TextPainter(
+        text: TextSpan(text: iconText, style: iconStyle),
+        textDirection: textDirection,
+        maxLines: 1,
+      )..layout();
       final iconRun = _GlyphRun(
-        text: String.fromCharCode(iconData.codePoint),
+        text: iconText,
         style: TextStyle(
           inherit: false,
           color: color,
@@ -329,6 +342,10 @@ class _VectorForegroundPainter extends CustomPainter {
           package: iconData.fontPackage,
         ),
         size: Size.square(iconSize),
+        paintOffset: Offset(
+          (iconSize - iconPainter.width) / 2,
+          (iconSize - iconPainter.height) / 2,
+        ),
         localDx: 0,
       );
       _paintGlyphRun(canvas, size, iconRun, Offset(rect.center.dx, y), color);
@@ -366,6 +383,7 @@ class _VectorForegroundPainter extends CustomPainter {
         text: cluster,
         style: style,
         size: Size(painter.width, painter.height),
+        paintOffset: Offset.zero,
         localDx: usedWidth,
       ));
       usedWidth += painter.width;
@@ -418,7 +436,7 @@ class _VectorForegroundPainter extends CustomPainter {
       textDirection: textDirection,
       maxLines: 1,
     )..layout();
-    painter.paint(canvas, offset);
+    painter.paint(canvas, offset + run.paintOffset);
   }
 
   TextStyle _labelStyle(Color color, bool selected) {
@@ -453,12 +471,14 @@ class _GlyphRun {
     required this.text,
     required this.style,
     required this.size,
+    required this.paintOffset,
     required this.localDx,
   });
 
   final String text;
   final TextStyle style;
   final Size size;
+  final Offset paintOffset;
   final double localDx;
 }
 
