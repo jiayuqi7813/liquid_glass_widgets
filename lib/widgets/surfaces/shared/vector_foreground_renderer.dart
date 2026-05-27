@@ -41,6 +41,7 @@ class BottomBarVectorForegroundLayer extends StatelessWidget {
     required this.expansion,
     required this.transform,
     required this.borderRadius,
+    this.debugLayout = false,
     this.textStyle,
     super.key,
   });
@@ -59,6 +60,7 @@ class BottomBarVectorForegroundLayer extends StatelessWidget {
   final double expansion;
   final Matrix4 transform;
   final double borderRadius;
+  final bool debugLayout;
   final TextStyle? textStyle;
 
   @override
@@ -92,6 +94,7 @@ class BottomBarVectorForegroundLayer extends StatelessWidget {
               expansion: expansion,
               borderRadius: borderRadius,
             ),
+            debugLayout: debugLayout,
             itemRectResolver: (size, index) {
               final contentRect =
                   tabPadding.resolve(Directionality.of(context)).deflateRect(
@@ -145,6 +148,7 @@ class TabBarVectorForegroundLayer extends StatelessWidget {
     this.scrollOffset = 0.0,
     this.itemOffsets,
     this.itemWidths,
+    this.debugLayout = false,
     super.key,
   });
 
@@ -166,6 +170,7 @@ class TabBarVectorForegroundLayer extends StatelessWidget {
   final double scrollOffset;
   final List<double>? itemOffsets;
   final List<double>? itemWidths;
+  final bool debugLayout;
 
   @override
   Widget build(BuildContext context) {
@@ -204,6 +209,7 @@ class TabBarVectorForegroundLayer extends StatelessWidget {
               indicatorLeft: indicatorLeft,
               indicatorWidth: indicatorWidth,
             ),
+            debugLayout: debugLayout,
             itemRectResolver: (size, index) {
               final resolvedPadding = padding.resolve(direction);
               final contentRect = resolvedPadding.deflateRect(
@@ -257,6 +263,7 @@ class _VectorForegroundPainter extends CustomPainter {
     required this.unselectedLabelStyle,
     required this.lens,
     required this.itemRectResolver,
+    required this.debugLayout,
   });
 
   final List<VectorForegroundItem> items;
@@ -271,6 +278,9 @@ class _VectorForegroundPainter extends CustomPainter {
   final TextStyle unselectedLabelStyle;
   final _LensField lens;
   final _ItemRectResolver itemRectResolver;
+  final bool debugLayout;
+
+  static String? _lastDebugLine;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -283,7 +293,7 @@ class _VectorForegroundPainter extends CustomPainter {
       final item = items[index];
       final selected = index == selectedIndex;
       final color = selected ? selectedIconColor : unselectedIconColor;
-      _paintItem(canvas, size, rect, item, selected, color);
+      _paintItem(canvas, size, rect, item, index, selected, color);
     }
   }
 
@@ -292,6 +302,7 @@ class _VectorForegroundPainter extends CustomPainter {
     Size size,
     Rect rect,
     VectorForegroundItem item,
+    int index,
     bool selected,
     Color color,
   ) {
@@ -317,6 +328,8 @@ class _VectorForegroundPainter extends CustomPainter {
     final gap = hasIcon && hasLabel ? iconLabelSpacing : 0.0;
     final contentHeight = (hasIcon ? iconSize : 0.0) + gap + labelHeight;
     var y = rect.center.dy - contentHeight / 2;
+    _PaintRunMetrics? iconMetrics;
+    _PaintRunMetrics? labelMetrics;
 
     if (hasIcon) {
       final iconText = String.fromCharCode(iconData.codePoint);
@@ -352,11 +365,12 @@ class _VectorForegroundPainter extends CustomPainter {
         ),
         localDx: 0,
       );
-      _paintGlyphRun(
+      iconMetrics = _paintGlyphRun(
         canvas,
         size,
         iconRun,
         Offset(rect.center.dx - iconSize / 2, y),
+        rect.center,
         color,
       );
       y += iconSize + gap;
@@ -367,9 +381,23 @@ class _VectorForegroundPainter extends CustomPainter {
           labelRuns.fold<double>(0.0, (sum, run) => sum + run.size.width);
       var x = rect.center.dx - totalWidth / 2;
       for (final run in labelRuns) {
-        _paintGlyphRun(canvas, size, run, Offset(x, y), color);
+        labelMetrics =
+            _paintGlyphRun(canvas, size, run, Offset(x, y), rect.center, color);
         x += run.size.width;
       }
+    }
+
+    if (debugLayout && selected) {
+      _debugLogLayout(
+        size: size,
+        index: index,
+        label: label,
+        rect: rect,
+        groupCenter: rect.center,
+        contentHeight: contentHeight,
+        iconMetrics: iconMetrics,
+        labelMetrics: labelMetrics,
+      );
     }
   }
 
@@ -402,19 +430,24 @@ class _VectorForegroundPainter extends CustomPainter {
     ];
   }
 
-  void _paintGlyphRun(
+  _PaintRunMetrics _paintGlyphRun(
     Canvas canvas,
     Size size,
     _GlyphRun run,
     Offset topLeft,
+    Offset groupCenter,
     Color color,
   ) {
     final center = topLeft + Offset(run.size.width / 2, run.size.height / 2);
     final edge = lens.edgeAmount(center, size);
-    final warped = lens.warpPoint(center, size);
+    final groupCoverage = lens.coverageAmount(groupCenter, size);
+    final groupScale = 1.0 + groupCoverage * lens.effectAmount * 0.05;
+    final groupDelta = lens.warpPoint(groupCenter, size) - groupCenter;
+    final warped = center + groupDelta;
+    final scaledSize = run.size * groupScale;
     final offset = Offset(
-      warped.dx - run.size.width / 2,
-      warped.dy - run.size.height / 2,
+      warped.dx - scaledSize.width / 2,
+      warped.dy - scaledSize.height / 2,
     );
 
     final fringeEdge = edge * lens.effectAmount;
@@ -426,19 +459,67 @@ class _VectorForegroundPainter extends CustomPainter {
         run,
         offset + normal * fringePx,
         Color.fromRGBO(255, 42, 34, 0.11 * fringeEdge),
+        scale: groupScale,
       );
       _paintText(
         canvas,
         run,
         offset - normal * fringePx,
         Color.fromRGBO(32, 116, 255, 0.11 * fringeEdge),
+        scale: groupScale,
       );
     }
 
-    _paintText(canvas, run, offset, color);
+    _paintText(canvas, run, offset, color, scale: groupScale);
+
+    return _PaintRunMetrics(
+      sourceCenter: center,
+      warpedCenter: warped,
+      paintOffset: offset,
+      scale: groupScale,
+      edge: edge,
+      groupCoverage: groupCoverage,
+      groupDelta: groupDelta,
+    );
   }
 
-  void _paintText(Canvas canvas, _GlyphRun run, Offset offset, Color color) {
+  void _debugLogLayout({
+    required Size size,
+    required int index,
+    required String? label,
+    required Rect rect,
+    required Offset groupCenter,
+    required double contentHeight,
+    required _PaintRunMetrics? iconMetrics,
+    required _PaintRunMetrics? labelMetrics,
+  }) {
+    final line = [
+      '[GlassVectorForeground]',
+      'tab=$index',
+      if (label != null) 'label="$label"',
+      'size=${_fmtSize(size)}',
+      'rect=${_fmtRect(rect)}',
+      'lens=${_fmtRect(lens.rectFor(size))}',
+      'thickness=${_fmt(lens.thickness)}',
+      'effect=${_fmt(lens.effectAmount)}',
+      'contentH=${_fmt(contentHeight)}',
+      'group=${_fmtOffset(groupCenter)}',
+      if (iconMetrics != null) 'icon=${iconMetrics.debugString}',
+      if (labelMetrics != null) 'text=${labelMetrics.debugString}',
+    ].join(' ');
+
+    if (line == _lastDebugLine) return;
+    _lastDebugLine = line;
+    debugPrint(line);
+  }
+
+  void _paintText(
+    Canvas canvas,
+    _GlyphRun run,
+    Offset offset,
+    Color color, {
+    double scale = 1.0,
+  }) {
     final painter = TextPainter(
       text: TextSpan(
         text: run.text,
@@ -448,7 +529,16 @@ class _VectorForegroundPainter extends CustomPainter {
       maxLines: 1,
       strutStyle: run.strutStyle,
     )..layout();
-    painter.paint(canvas, offset + run.paintOffset);
+    if ((scale - 1.0).abs() < 1e-4) {
+      painter.paint(canvas, offset + run.paintOffset);
+      return;
+    }
+
+    canvas.save();
+    canvas.translate(offset.dx, offset.dy);
+    canvas.scale(scale);
+    painter.paint(canvas, run.paintOffset);
+    canvas.restore();
   }
 
   TextStyle _labelStyle(Color color, bool selected) {
@@ -474,9 +564,45 @@ class _VectorForegroundPainter extends CustomPainter {
         selectedLabelStyle != oldDelegate.selectedLabelStyle ||
         unselectedLabelStyle != oldDelegate.unselectedLabelStyle ||
         lens != oldDelegate.lens ||
+        debugLayout != oldDelegate.debugLayout ||
         itemRectResolver != oldDelegate.itemRectResolver;
   }
 }
+
+class _PaintRunMetrics {
+  const _PaintRunMetrics({
+    required this.sourceCenter,
+    required this.warpedCenter,
+    required this.paintOffset,
+    required this.scale,
+    required this.edge,
+    required this.groupCoverage,
+    required this.groupDelta,
+  });
+
+  final Offset sourceCenter;
+  final Offset warpedCenter;
+  final Offset paintOffset;
+  final double scale;
+  final double edge;
+  final double groupCoverage;
+  final Offset groupDelta;
+
+  String get debugString =>
+      'src=${_fmtOffset(sourceCenter)},dst=${_fmtOffset(warpedCenter)},'
+      'paint=${_fmtOffset(paintOffset)},scale=${_fmt(scale)},'
+      'edge=${_fmt(edge)},cover=${_fmt(groupCoverage)},'
+      'delta=${_fmtOffset(groupDelta)}';
+}
+
+String _fmt(double value) => value.toStringAsFixed(2);
+
+String _fmtOffset(Offset offset) => '(${_fmt(offset.dx)},${_fmt(offset.dy)})';
+
+String _fmtSize(Size size) => '${_fmt(size.width)}x${_fmt(size.height)}';
+
+String _fmtRect(Rect rect) =>
+    '(${_fmt(rect.left)},${_fmt(rect.top)},${_fmt(rect.width)},${_fmt(rect.height)})';
 
 class _GlyphRun {
   const _GlyphRun({
@@ -595,6 +721,13 @@ class _LensField {
     final sd = _roundedRectSdf(p, rect, borderRadius + expansion * thickness);
     final width = math.max(8.0, rect.height * 0.22);
     return _smoothstep(width, 0.0, sd.abs());
+  }
+
+  double coverageAmount(Offset p, Size size) {
+    final rect = rectFor(size);
+    final sd = _roundedRectSdf(p, rect, borderRadius + expansion * thickness);
+    final width = math.max(6.0, rect.height * 0.12);
+    return _smoothstep(width, 0.0, sd);
   }
 
   Offset normalAt(Offset p, Size size) {

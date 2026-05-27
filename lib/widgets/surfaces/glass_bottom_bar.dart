@@ -224,6 +224,7 @@ class GlassBottomBar extends StatefulWidget {
     this.interactionGlowRadius = 1.5,
     this.interactionBehavior = GlassInteractionBehavior.full,
     this.pressScale = 1.04,
+    this.debugForegroundLayout = false,
   })  : assert(tabs.length > 0, 'GlassBottomBar requires at least one tab'),
         assert(
           selectedIndex >= 0 && selectedIndex < tabs.length,
@@ -302,6 +303,11 @@ class GlassBottomBar extends StatefulWidget {
   ///
   /// Defaults to 1.04 (4% growth — matches iOS 26 Apple News pill).
   final double pressScale;
+
+  /// Prints premium vector foreground layout metrics while debugging.
+  ///
+  /// Useful when diagnosing pressed-state icon/label drift. Defaults to false.
+  final bool debugForegroundLayout;
 
   // ===========================================================================
   // Tab Configuration
@@ -644,6 +650,7 @@ class _GlassBottomBarState extends State<GlassBottomBar> {
                         expansion: widget.indicatorExpansion,
                         transform: transform,
                         borderRadius: radius,
+                        debugLayout: widget.debugForegroundLayout,
                         textStyle: widget.textStyle,
                       ),
                       childUnselected: Row(

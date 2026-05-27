@@ -98,6 +98,7 @@ class GlassSearchableBottomBar extends StatefulWidget {
     this.tabWidth,
     this.indicatorExpansion = 14,
     this.onBarTap,
+    this.debugForegroundLayout = false,
   })  : assert(tabs.length > 0,
             'GlassSearchableBottomBar requires at least one tab'),
         assert(
@@ -152,6 +153,11 @@ class GlassSearchableBottomBar extends StatefulWidget {
   ///   giving a more balanced look. The search pill will be slightly narrower
   ///   while searching because it starts after the (now centred) collapsed tab.
   final GlassTabPillAnchor tabPillAnchor;
+
+  /// Prints premium vector foreground layout metrics while debugging.
+  ///
+  /// Useful when diagnosing pressed-state icon/label drift. Defaults to false.
+  final bool debugForegroundLayout;
 
   /// Whether the search bar is currently expanded.
   ///
@@ -773,6 +779,7 @@ class _GlassSearchableBottomBarState extends State<GlassSearchableBottomBar>
                             expansion: widget.indicatorExpansion,
                             transform: transform,
                             borderRadius: radius,
+                            debugLayout: widget.debugForegroundLayout,
                             textStyle: widget.textStyle,
                           ),
                           childUnselected: _buildTabRow(selected: false),
