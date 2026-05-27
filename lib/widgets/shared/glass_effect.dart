@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/scheduler.dart';
 import '../../widgets/interactive/liquid_glass_scope.dart';
 import 'inherited_liquid_glass.dart';
+import 'foreground_sdf_atlas.dart';
 
 import '../../types/glass_quality.dart';
 import 'adaptive_glass.dart';
@@ -38,6 +39,9 @@ class GlassEffect extends StatefulWidget {
     this.rimThickness = 0.5,
     this.rimSmoothing = 1.5,
     this.clipExpansion = EdgeInsets.zero,
+    this.foregroundSdfKey,
+    this.foregroundColor = Colors.white,
+    this.foregroundSdfRevision = 0,
     super.key,
   });
 
@@ -79,6 +83,17 @@ class GlassEffect extends StatefulWidget {
   ///
   /// Defaults to [EdgeInsets.zero] — no extra cost for static glass.
   final EdgeInsets clipExpansion;
+
+  /// Optional RepaintBoundary whose text/icon alpha is converted to an
+  /// MSDF-compatible foreground distance atlas for premium refraction.
+  final GlobalKey? foregroundSdfKey;
+
+  /// Color used by the premium shader when reconstructing [foregroundSdfKey].
+  final Color foregroundColor;
+
+  /// Caller-controlled cache revision for foreground content changes that do
+  /// not affect size or position, such as selected-tab icon swaps.
+  final int foregroundSdfRevision;
 
   static ui.FragmentProgram? _cachedProgram;
   static bool _isPreparing = false;
@@ -138,6 +153,9 @@ class _GlassEffectState extends State<GlassEffect>
   Offset? _lastCapturePosition;
   // Web only: guards against overlapping async captures.
   bool _isCapturingAsync = false;
+  ForegroundSdfSnapshot? _foregroundSdf;
+  Object? _foregroundCaptureSignature;
+  bool _isCapturingForeground = false;
 
   @override
   void initState() {
@@ -166,6 +184,12 @@ class _GlassEffectState extends State<GlassEffect>
         _initShader();
       }
     }
+    if (oldWidget.foregroundSdfKey != widget.foregroundSdfKey ||
+        oldWidget.foregroundSdfRevision != widget.foregroundSdfRevision ||
+        oldWidget.foregroundColor != widget.foregroundColor) {
+      _foregroundCaptureSignature = null;
+      _scheduleForegroundCapture();
+    }
     _updateTicker();
   }
 
@@ -179,6 +203,56 @@ class _GlassEffectState extends State<GlassEffect>
   }
 
   GlobalKey? get _effectiveKey => widget.backgroundKey ?? _cachedScopeKey;
+
+  void _scheduleForegroundCapture() {
+    final key = widget.foregroundSdfKey;
+    if (key == null || _isCapturingForeground) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isCapturingForeground) return;
+      final boundary =
+          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null || !boundary.hasSize || boundary.size.isEmpty) {
+        return;
+      }
+
+      final dpr = View.of(context).devicePixelRatio;
+      final origin = boundary.localToGlobal(Offset.zero);
+      final signature = Object.hash(
+        key,
+        widget.foregroundSdfRevision,
+        boundary.size.width,
+        boundary.size.height,
+        origin.dx,
+        origin.dy,
+        dpr,
+      );
+      if (signature == _foregroundCaptureSignature && _foregroundSdf != null) {
+        return;
+      }
+
+      _isCapturingForeground = true;
+      ForegroundSdfAtlas.capture(
+        boundary,
+        pixelRatio: dpr,
+      ).catchError((Object _) {
+        return null;
+      }).then((snapshot) {
+        if (!mounted) {
+          snapshot?.dispose();
+          return;
+        }
+        final oldSnapshot = _foregroundSdf;
+        setState(() {
+          _foregroundSdf = snapshot;
+          _foregroundCaptureSignature = signature;
+        });
+        oldSnapshot?.dispose();
+      }).whenComplete(() {
+        _isCapturingForeground = false;
+      });
+    });
+  }
 
   void _updateTicker() {
     // Background capture requirements:
@@ -349,6 +423,7 @@ class _GlassEffectState extends State<GlassEffect>
   void dispose() {
     _ticker.dispose();
     _backgroundImage?.dispose();
+    _foregroundSdf?.dispose();
     _localShader?.dispose();
     _localShader = null;
     super.dispose();
@@ -365,6 +440,9 @@ class _GlassEffectState extends State<GlassEffect>
   Widget build(BuildContext context) {
     // 1. Detect Environment & Constraints
     final bool isImpeller = !kIsWeb && GlassEffect._canUseImpeller;
+    if (isImpeller && widget.quality == GlassQuality.premium) {
+      _scheduleForegroundCapture();
+    }
 
     final bool avoidsRefraction = context
             .dependOnInheritedWidgetOfExactType<InheritedLiquidGlass>()
@@ -408,6 +486,8 @@ class _GlassEffectState extends State<GlassEffect>
         shape: widget.shape,
         settings: widget.settings,
         clipExpansion: widget.clipExpansion,
+        foregroundSdf: _foregroundSdf,
+        foregroundColor: widget.foregroundColor,
         child: widget.child,
       );
     }

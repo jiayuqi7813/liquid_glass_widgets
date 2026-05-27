@@ -12,6 +12,7 @@ import '../liquid_glass_render_scope.dart';
 import '../logging.dart';
 import 'liquid_glass_render_object.dart';
 import '../shaders.dart';
+import '../../../widgets/shared/foreground_sdf_atlas.dart';
 import 'package:meta/meta.dart';
 
 /// Represents a layer of multiple [LiquidGlass] shapes or
@@ -73,6 +74,8 @@ class LiquidGlassLayer extends StatefulWidget {
     required this.child,
     this.settings = const LiquidGlassSettings(),
     this.clipExpansion = EdgeInsets.zero,
+    this.foregroundSdf,
+    this.foregroundColor = Colors.white,
     super.key,
   });
 
@@ -96,6 +99,12 @@ class LiquidGlassLayer extends StatefulWidget {
   ///
   /// Defaults to [EdgeInsets.zero] — zero extra GPU cost for static glass.
   final EdgeInsets clipExpansion;
+
+  /// Optional foreground SDF/MSDF atlas sampled by the premium render shader.
+  final ForegroundSdfSnapshot? foregroundSdf;
+
+  /// Color used to reconstruct the foreground SDF/MSDF atlas.
+  final Color foregroundColor;
 
   @override
   State<LiquidGlassLayer> createState() => _LiquidGlassLayerState();
@@ -145,6 +154,8 @@ class _LiquidGlassLayerState extends State<LiquidGlassLayer>
               settings: widget.settings,
               link: _link,
               clipExpansion: widget.clipExpansion,
+              foregroundSdf: widget.foregroundSdf,
+              foregroundColor: widget.foregroundColor,
               child: child!,
             ),
             child: widget.child,
@@ -163,6 +174,8 @@ class _RawShapes extends SingleChildRenderObjectWidget {
     required Widget super.child,
     required this.link,
     this.clipExpansion = EdgeInsets.zero,
+    this.foregroundSdf,
+    this.foregroundColor = Colors.white,
   });
 
   final FragmentShader renderShader;
@@ -170,6 +183,8 @@ class _RawShapes extends SingleChildRenderObjectWidget {
   final LiquidGlassSettings settings;
   final GeometryRenderLink link;
   final EdgeInsets clipExpansion;
+  final ForegroundSdfSnapshot? foregroundSdf;
+  final Color foregroundColor;
 
   @override
   RenderObject createRenderObject(BuildContext context) {
@@ -180,6 +195,8 @@ class _RawShapes extends SingleChildRenderObjectWidget {
       settings: settings,
       link: link,
       clipExpansion: clipExpansion,
+      foregroundSdf: foregroundSdf,
+      foregroundColor: foregroundColor,
     );
   }
 
@@ -193,7 +210,9 @@ class _RawShapes extends SingleChildRenderObjectWidget {
       ..devicePixelRatio = MediaQuery.devicePixelRatioOf(context)
       ..settings = settings
       ..backdropKey = backdropKey
-      ..clipExpansion = clipExpansion;
+      ..clipExpansion = clipExpansion
+      ..foregroundSdf = foregroundSdf
+      ..foregroundColor = foregroundColor;
   }
 }
 
@@ -206,6 +225,8 @@ class RenderLiquidGlassLayer extends LiquidGlassRenderObject
     required super.settings,
     required super.link,
     super.backdropKey,
+    super.foregroundSdf,
+    super.foregroundColor,
     EdgeInsets clipExpansion = EdgeInsets.zero,
   }) : _clipExpansion = clipExpansion;
 

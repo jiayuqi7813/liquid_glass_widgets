@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import '../../widgets/shared/foreground_sdf_atlas.dart';
 import 'liquid_glass_renderer.dart';
 import 'internal/transform_tracking_repaint_boundary_mixin.dart';
 import 'liquid_glass_blend_group.dart';
@@ -34,6 +35,8 @@ class LiquidGlass extends StatelessWidget {
     required this.shape,
     this.glassContainsChild = false,
     this.clipBehavior = Clip.hardEdge,
+    this.foregroundSdf,
+    this.foregroundColor = const Color(0xFFFFFFFF),
     super.key,
   })  : grouped = false,
         blendGroupLink = null,
@@ -52,6 +55,8 @@ class LiquidGlass extends StatelessWidget {
     this.glassContainsChild = false,
     this.clipBehavior = Clip.hardEdge,
     this.blendGroupLink,
+    this.foregroundSdf,
+    this.foregroundColor = const Color(0xFFFFFFFF),
   })  : ownLayerConfig = null,
         clipExpansion = EdgeInsets.zero,
         grouped = true;
@@ -72,6 +77,8 @@ class LiquidGlass extends StatelessWidget {
     this.clipBehavior = Clip.hardEdge,
     this.blendGroupLink,
     this.clipExpansion = EdgeInsets.zero,
+    this.foregroundSdf,
+    this.foregroundColor = const Color(0xFFFFFFFF),
   })  : ownLayerConfig = settings,
         grouped = false;
 
@@ -116,6 +123,15 @@ class LiquidGlass extends StatelessWidget {
   /// the grouped or default constructors.
   final EdgeInsets clipExpansion;
 
+  /// Optional foreground distance atlas composited inside the glass shader.
+  ///
+  /// Used by tab/bottom-bar indicators so labels and icons can be refracted
+  /// from distance data instead of being stretched as a pre-rasterized bitmap.
+  final ForegroundSdfSnapshot? foregroundSdf;
+
+  /// Color used when reconstructing [foregroundSdf] in the shader.
+  final Color foregroundColor;
+
   @override
   Widget build(BuildContext context) {
     // If we have our own layer config, we create our own layer.
@@ -123,6 +139,8 @@ class LiquidGlass extends StatelessWidget {
       return LiquidGlassLayer(
         settings: settings,
         clipExpansion: clipExpansion,
+        foregroundSdf: foregroundSdf,
+        foregroundColor: foregroundColor,
         child: LiquidGlassBlendGroup(
           blend: 0,
           child: Builder(

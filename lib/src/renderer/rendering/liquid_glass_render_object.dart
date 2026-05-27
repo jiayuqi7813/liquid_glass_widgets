@@ -5,12 +5,12 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_shaders/flutter_shaders.dart';
 import '../liquid_glass_renderer.dart';
 import '../internal/render_liquid_glass_geometry.dart';
 import '../internal/snap_rect_to_pixels.dart';
 import '../logging.dart';
+import '../../../widgets/shared/foreground_sdf_atlas.dart';
 import 'package:meta/meta.dart';
 
 /// A render object that can assemble [RenderLiquidGlassGeometry] shapes and
@@ -23,9 +23,13 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
     required LiquidGlassSettings settings,
     required double devicePixelRatio,
     BackdropKey? backdropKey,
+    ForegroundSdfSnapshot? foregroundSdf,
+    Color foregroundColor = Colors.white,
   })  : _settings = settings,
         _devicePixelRatio = devicePixelRatio,
         _backdropKey = backdropKey,
+        _foregroundSdf = foregroundSdf,
+        _foregroundColor = foregroundColor,
         _link = link,
         _cachedLightDir = Offset(
           cos(settings.lightAngle),
@@ -89,6 +93,22 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
   set backdropKey(BackdropKey? value) {
     if (_backdropKey == value) return;
     _backdropKey = value;
+    markNeedsPaint();
+  }
+
+  ForegroundSdfSnapshot? _foregroundSdf;
+  ForegroundSdfSnapshot? get foregroundSdf => _foregroundSdf;
+  set foregroundSdf(ForegroundSdfSnapshot? value) {
+    if (_foregroundSdf == value) return;
+    _foregroundSdf = value;
+    markNeedsPaint();
+  }
+
+  Color _foregroundColor;
+  Color get foregroundColor => _foregroundColor;
+  set foregroundColor(Color value) {
+    if (_foregroundColor == value) return;
+    _foregroundColor = value;
     markNeedsPaint();
   }
 
@@ -280,7 +300,18 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
               ..setOffset(activeBounds.topLeft * devicePixelRatio)
               ..setSize(activeBounds.size * devicePixelRatio);
           })
-          ..setImageSampler(1, geometryImage);
+          // Slots 25-34: optional foreground SDF/MSDF atlas.
+          ..setFloatUniforms(initialIndex: 25, (value) {
+            final foreground = foregroundSdf;
+            value
+              ..setColor(foregroundColor)
+              ..setFloat(foreground?.pxRange ?? 1.0)
+              ..setFloat(foreground == null ? 0.0 : 1.0)
+              ..setOffset(foreground?.origin ?? Offset.zero)
+              ..setSize(foreground?.size ?? const Size(1.0, 1.0));
+          })
+          ..setImageSampler(1, geometryImage)
+          ..setImageSampler(2, foregroundSdf?.image ?? geometryImage);
         paintLiquidGlass(
           context,
           offset,

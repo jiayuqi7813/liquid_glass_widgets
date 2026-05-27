@@ -162,6 +162,8 @@ class SearchableTabIndicator extends StatefulWidget {
 
 class SearchableTabIndicatorState extends State<SearchableTabIndicator>
     with TabDragGestureMixin<SearchableTabIndicator> {
+  final GlobalKey _foregroundSdfKey = GlobalKey();
+
   // ── Mixin interface ────────────────────────────────────────────────────────
   @override
   int get tabCount => widget.tabCount;
@@ -376,9 +378,12 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
 
               // Unselected icons — all tabs in unselected style (for refraction).
               Positioned.fill(
-                child: Container(
-                  padding: widget.tabPadding,
-                  child: widget.childUnselected,
+                child: RepaintBoundary(
+                  key: _foregroundSdfKey,
+                  child: Container(
+                    padding: widget.tabPadding,
+                    child: widget.childUnselected,
+                  ),
                 ),
               ),
               if (widget.visible && thickness > 0.05)
@@ -395,6 +400,10 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                   expansion: widget.indicatorExpansion,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
+                  foregroundSdfKey: _foregroundSdfKey,
+                  foregroundColor: Colors.white,
+                  foregroundSdfRevision:
+                      Object.hash(widget.tabIndex, widget.tabCount),
                 ),
 
               // Persistent selected-icon overlay — always at TARGET position
@@ -467,6 +476,7 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
               // 2. Icon Content Layer (Unselected + Selected combined for refraction)
               Positioned.fill(
                 child: RepaintBoundary(
+                  key: _foregroundSdfKey,
                   child: Stack(
                     children: [
                       ClipPath(
@@ -523,6 +533,10 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                 expansion: widget.indicatorExpansion,
                 glassSettings: widget.indicatorSettings,
                 backgroundKey: widget.backgroundKey,
+                foregroundSdfKey: _foregroundSdfKey,
+                foregroundColor: Colors.white,
+                foregroundSdfRevision:
+                    Object.hash(widget.tabIndex, widget.tabCount),
               ),
             ],
           ),

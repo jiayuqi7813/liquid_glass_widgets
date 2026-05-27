@@ -111,6 +111,7 @@ class TabBarContentState extends State<TabBarContent>
   late SingleSpringController _indWidthSpring;
 
   late List<GlobalKey> _tabKeys;
+  final GlobalKey _foregroundSdfKey = GlobalKey();
   List<double> _tabWidths = [];
   List<double> _tabOffsets = [];
 
@@ -578,6 +579,16 @@ class TabBarContentState extends State<TabBarContent>
       selectedIconColor,
       unselectedIconColor,
     );
+    final foregroundSdfRevision = Object.hashAll([
+      widget.selectedIndex,
+      widget.isScrollable,
+      for (final tab in widget.tabs) tab.hashCode,
+    ]);
+    final foregroundColor = selectedLabelStyle.color ?? selectedIconColor;
+    final foregroundSdfLayer = RepaintBoundary(
+      key: _foregroundSdfKey,
+      child: tabLabels,
+    );
 
     return RawGestureDetector(
       gestures: {
@@ -655,6 +666,9 @@ class TabBarContentState extends State<TabBarContent>
                   borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
+                  foregroundSdfKey: _foregroundSdfKey,
+                  foregroundColor: foregroundColor,
+                  foregroundSdfRevision: foregroundSdfRevision,
                   expansion:
                       widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
                   paintBackground: paintBackground,
@@ -677,25 +691,15 @@ class TabBarContentState extends State<TabBarContent>
                     : const ClampingScrollPhysics();
 
                 return Stack(
-                  clipBehavior: Clip.none,
                   children: [
-                    // ── Layer 1: clipped content ────────────────────────────────────
-                    // ClipRRect clips to the tab bar's rounded corners so the solid
-                    // background pill and tab labels don't overflow the corner radius.
                     ClipRRect(
                       borderRadius:
                           widget.tabBarBorderRadius ?? BorderRadius.zero,
                       child: Stack(
-                        clipBehavior: Clip.none,
                         children: [
-                          // Background solid pill — clips with the bar (rendered before
-                          // labels so labels paint above the pill — correct z-order).
                           if (canShowIndicator)
                             buildIndicator(
                                 paintBackground: true, paintGlass: false),
-
-                          // Tab labels (scrollable) — rendered after pill so they
-                          // paint on top and are not obscured by the indicator.
                           NotificationListener<ScrollStartNotification>(
                             onNotification: (_) {
                               if (_isDown) setState(() => _isDown = false);
@@ -705,37 +709,34 @@ class TabBarContentState extends State<TabBarContent>
                               controller: widget.scrollController,
                               scrollDirection: Axis.horizontal,
                               physics: physics,
-                              child: tabLabels,
+                              child: foregroundSdfLayer,
                             ),
                           ),
                         ],
                       ),
                     ),
-
-                    // ── Layer 2: glass bloom (above all clips) ──────────────────────
                     if (canShowIndicator)
                       buildIndicator(paintBackground: false, paintGlass: true),
                   ],
                 );
               } else {
-                // Non-scrollable mode: stacking background, labels, glass without clipping.
-                //
-                // Premium: glass renders ABOVE labels — Impeller's physical refraction
-                // wraps the icon correctly (it refracts around it, not covers it).
-                //
-                // Standard/Minimal: glass renders BELOW labels — the 2D shader is an
-                // opaque paint pass that would obscure the icon if placed on top.
                 final bool isPremiumQuality =
                     widget.quality == GlassQuality.premium;
+
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
                     if (canShowIndicator)
                       buildIndicator(
-                          paintBackground: true, paintGlass: !isPremiumQuality),
-                    tabLabels,
+                        paintBackground: true,
+                        paintGlass: !isPremiumQuality,
+                      ),
+                    foregroundSdfLayer,
                     if (canShowIndicator && isPremiumQuality)
-                      buildIndicator(paintBackground: false, paintGlass: true),
+                      buildIndicator(
+                        paintBackground: false,
+                        paintGlass: true,
+                      ),
                   ],
                 );
               }
@@ -757,6 +758,7 @@ class TabBarContentState extends State<TabBarContent>
       (index) {
         final tab = widget.tabs[index];
         final isSelected = index == widget.selectedIndex;
+
         return KeyedSubtree(
           key: _tabKeys[index],
           child: RepaintBoundary(

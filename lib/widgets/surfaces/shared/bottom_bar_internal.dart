@@ -366,6 +366,8 @@ class TabIndicator extends StatefulWidget {
 @visibleForTesting
 class TabIndicatorState extends State<TabIndicator>
     with TabDragGestureMixin<TabIndicator> {
+  final GlobalKey _foregroundSdfKey = GlobalKey();
+
   // ── Mixin interface ────────────────────────────────────────────────────────
   @override
   int get tabCount => widget.tabCount;
@@ -576,9 +578,12 @@ class TabIndicatorState extends State<TabIndicator>
             // Unselected icons — always visible, all tabs in unselected style.
             // The glass indicator refracts this layer as the pill moves over it.
             Positioned.fill(
-              child: Container(
-                padding: widget.tabPadding,
-                child: widget.childUnselected,
+              child: RepaintBoundary(
+                key: _foregroundSdfKey,
+                child: Container(
+                  padding: widget.tabPadding,
+                  child: widget.childUnselected,
+                ),
               ),
             ),
 
@@ -597,6 +602,10 @@ class TabIndicatorState extends State<TabIndicator>
                 expansion: widget.indicatorExpansion,
                 glassSettings: widget.indicatorSettings,
                 backgroundKey: widget.backgroundKey,
+                foregroundSdfKey: _foregroundSdfKey,
+                foregroundColor: const Color(0xFFFFFFFF),
+                foregroundSdfRevision:
+                    Object.hash(widget.tabIndex, widget.tabCount),
               ),
 
             // Persistent selected-icon overlay — always rendered at the TARGET
@@ -677,6 +686,7 @@ class TabIndicatorState extends State<TabIndicator>
             // without white bleed-through.
             Positioned.fill(
               child: RepaintBoundary(
+                key: _foregroundSdfKey,
                 child: Stack(
                   children: [
                     // Unselected (inverse clipped — visible OUTSIDE pill)
@@ -712,7 +722,10 @@ class TabIndicatorState extends State<TabIndicator>
                         padding: widget.tabPadding,
                         height: widget.barHeight,
                         child: widget.selectedTabBuilder(
-                            context, thickness, alignment),
+                          context,
+                          thickness,
+                          alignment,
+                        ),
                       ),
                     ),
                   ],
@@ -737,6 +750,10 @@ class TabIndicatorState extends State<TabIndicator>
               expansion: widget.indicatorExpansion,
               glassSettings: widget.indicatorSettings,
               backgroundKey: widget.backgroundKey,
+              foregroundSdfKey: _foregroundSdfKey,
+              foregroundColor: const Color(0xFFFFFFFF),
+              foregroundSdfRevision:
+                  Object.hash(widget.tabIndex, widget.tabCount),
             ),
           ],
         ),

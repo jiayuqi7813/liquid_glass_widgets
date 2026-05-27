@@ -33,6 +33,11 @@ precision highp float; // mediump causes colour banding (10-bit mantissa on mobi
 // Slot 22: uCompactLensEdgePull
 // Slot 23: uCompactLensEdgeBlur
 // Slot 24: uCompactLensInnerShadow
+// Slots 25-28: uForegroundColor
+// Slot 29: uMSDFPxRange
+// Slot 30: uHasForegroundMSDF
+// Slots 31-32: uForegroundOffset
+// Slots 33-34: uForegroundSize
 uniform vec2 uSize;          // physical-pixel size of the backdrop capture
 uniform vec2 uGeometryOffset;
 uniform vec2 uGeometrySize;
@@ -48,11 +53,31 @@ uniform float uCompactLensHeightPinch;
 uniform float uCompactLensEdgePull;
 uniform float uCompactLensEdgeBlur;
 uniform float uCompactLensInnerShadow;
+uniform vec4 uForegroundColor;
+uniform float uMSDFPxRange;
+uniform float uHasForegroundMSDF;
+uniform vec2 uForegroundOffset;
+uniform vec2 uForegroundSize;
 
 uniform sampler2D uBackgroundTexture;
 uniform sampler2D uGeometryTexture;
+uniform sampler2D uForegroundMSDFTexture;
 
 layout(location = 0) out vec4 fragColor;
+
+float median3(vec3 v) {
+    return max(min(v.r, v.g), min(max(v.r, v.g), v.b));
+}
+
+float sampleForegroundMSDFAlpha(vec2 uv, float pxRange) {
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+        return 0.0;
+    }
+    vec3 msdf = texture(uForegroundMSDFTexture, uv).rgb;
+    float sd = median3(msdf) - 0.5;
+    float screenPxRange = max(0.5 / max(pxRange, 1e-4), 1e-4);
+    return smoothstep(-screenPxRange, screenPxRange, sd);
+}
 
 void main() {
     // Unpacked here rather than at global scope: global non-constant initialisers
@@ -407,6 +432,61 @@ void main() {
     float fresnel = (1.0 - normalZ) * edgeFactor * 0.10;
     finalColor.rgb = clamp(finalColor.rgb + vec3(fresnel), 0.0, 1.0);
 
-    float alpha  = geometryData.a;
-    fragColor    = vec4(finalColor.rgb * alpha, alpha);
+    float alpha = geometryData.a;
+
+    if (uHasForegroundMSDF > 0.5 &&
+        uForegroundColor.a > 0.001 &&
+        uForegroundSize.x > 1.0 &&
+        uForegroundSize.y > 1.0) {
+        vec2 foregroundUV = (fragCoord - uForegroundOffset) / uForegroundSize;
+        #ifdef IMPELLER_TARGET_OPENGLES
+            foregroundUV.y = 1.0 - foregroundUV.y;
+        #endif
+
+        if (!any(lessThan(foregroundUV, vec2(0.0))) &&
+            !any(greaterThan(foregroundUV, vec2(1.0)))) {
+            vec2 contentDisp = displacement;
+            float contentLen = length(contentDisp);
+            float maxContentDispPx = 6.0;
+            if (contentLen > maxContentDispPx) {
+                contentDisp *= maxContentDispPx / max(contentLen, 1e-4);
+                contentLen = maxContentDispPx;
+            }
+
+            vec2 invForegroundSize = 1.0 / uForegroundSize;
+            vec2 contentUV = foregroundUV + contentDisp * invForegroundSize;
+            vec2 dir = contentLen > 1e-4
+                ? contentDisp / contentLen
+                : vec2(0.0);
+            float caPx = min(contentLen * 0.04, 0.55);
+            vec2 caUV = dir * caPx * invForegroundSize;
+
+            float mainA = sampleForegroundMSDFAlpha(
+                contentUV,
+                uMSDFPxRange
+            );
+            float edgeA = mainA * (1.0 - mainA) * 4.0;
+            float aR = sampleForegroundMSDFAlpha(
+                contentUV + caUV,
+                uMSDFPxRange
+            );
+            float aB = sampleForegroundMSDFAlpha(
+                contentUV - caUV,
+                uMSDFPxRange
+            );
+
+            vec3 clean = vec3(mainA);
+            vec3 fringe = vec3(aR, mainA, aB);
+            vec3 alphaRGB = mix(clean, fringe, edgeA * 0.65);
+            vec3 foregroundRGB = uForegroundColor.rgb * alphaRGB;
+            float foregroundA =
+                max(max(alphaRGB.r, alphaRGB.g), alphaRGB.b) *
+                uForegroundColor.a;
+
+            finalColor.rgb = mix(finalColor.rgb, foregroundRGB, foregroundA);
+            alpha = max(alpha, foregroundA);
+        }
+    }
+
+    fragColor = vec4(finalColor.rgb * alpha, alpha);
 }
