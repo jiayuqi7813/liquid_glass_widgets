@@ -932,5 +932,9 @@ class _RenderInteractiveIndicator extends RenderProxyBox {
     _shader.setFloat(index++, _edgeAlphaMultiplier);
     _shader.setFloat(index++, _rimThickness);
     _shader.setFloat(index++, _rimSmoothing);
+    _shader.setFloat(index++, _settings.compactLensHeightPinch.clamp(0.0, 1.0));
+    _shader.setFloat(index++, _settings.compactLensEdgePull.clamp(0.0, 1.0));
+    _shader.setFloat(index++, _settings.compactLensEdgeBlur.clamp(0.0, 1.0));
+    _shader.setFloat(index++, _settings.compactLensInnerShadow.clamp(0.0, 1.0));
   }
 }

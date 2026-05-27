@@ -21,6 +21,13 @@ class LiquidGlassSettings with EquatableMixin {
     this.ambientStrength = 0,
     this.refractiveIndex = 1.2,
     this.saturation = 1.5,
+    this.refractionScale = 1.0,
+    this.verticalRefractionScale = 1.0,
+    this.sideFisheyeScale = 0.0,
+    this.compactLensHeightPinch = 0.0,
+    this.compactLensEdgePull = 0.0,
+    this.compactLensEdgeBlur = 0.0,
+    this.compactLensInnerShadow = 0.0,
     this.glowIntensity = 0.75,
     this.specularSharpness = GlassSpecularSharpness.medium,
     this.standardOpacityMultiplier = 1.0,
@@ -49,6 +56,13 @@ class LiquidGlassSettings with EquatableMixin {
     double lightIntensity = 50,
     double lightAngle = GlassDefaults.lightAngle,
     Color glassColor = const Color.fromARGB(0, 255, 255, 255),
+    double refractionScale = 1.0,
+    double verticalRefractionScale = 1.0,
+    double sideFisheyeScale = 0.0,
+    double compactLensHeightPinch = 0.0,
+    double compactLensEdgePull = 0.0,
+    double compactLensEdgeBlur = 0.0,
+    double compactLensInnerShadow = 0.0,
     GlassSpecularSharpness specularSharpness = GlassSpecularSharpness.medium,
     double standardOpacityMultiplier = 1.0,
   }) : this(
@@ -62,6 +76,13 @@ class LiquidGlassSettings with EquatableMixin {
           ambientStrength: 0.1,
           saturation: 1.5,
           glassColor: glassColor,
+          refractionScale: refractionScale,
+          verticalRefractionScale: verticalRefractionScale,
+          sideFisheyeScale: sideFisheyeScale,
+          compactLensHeightPinch: compactLensHeightPinch,
+          compactLensEdgePull: compactLensEdgePull,
+          compactLensEdgeBlur: compactLensEdgeBlur,
+          compactLensInnerShadow: compactLensInnerShadow,
           specularSharpness: specularSharpness,
           standardOpacityMultiplier: standardOpacityMultiplier,
         );
@@ -150,6 +171,52 @@ class LiquidGlassSettings with EquatableMixin {
   /// Defaults to 1.0
   final double saturation;
 
+  /// Scales the overall refraction displacement after the glass geometry has
+  /// been computed.
+  ///
+  /// Keep the default `1.0` for ordinary glass surfaces. Interactive controls
+  /// with text directly under the edge can lower this to avoid pulling whole
+  /// glyphs from far away into the rim.
+  final double refractionScale;
+
+  /// Scales refraction displacement on the vertical axis.
+  ///
+  /// Keep the default `1.0` for ordinary glass surfaces. Interactive controls
+  /// with text directly under the lens can lower this to avoid top/bottom edge
+  /// ghosting while preserving left/right edge distortion.
+  final double verticalRefractionScale;
+
+  /// Adds a vertical fish-eye bend only inside the left/right edge lens bands.
+  ///
+  /// This is useful for segmented controls where the native effect bends glyphs
+  /// both horizontally and vertically as a side edge passes over text, without
+  /// turning the whole top or bottom rim into a vertical refraction strip.
+  final double sideFisheyeScale;
+
+  /// Compresses the interior sampling height for compact segmented lenses.
+  ///
+  /// Defaults to `0.0` so ordinary glass surfaces keep their native geometry.
+  /// Segmented controls use this to make the track behind the active bubble
+  /// look thinner without bending the top and bottom edges outward.
+  final double compactLensHeightPinch;
+
+  /// Strength of the outer left/right edge pull for compact segmented lenses.
+  ///
+  /// This controls the vertical fish-eye lobe that catches glyphs as the
+  /// bubble edge passes over them. Defaults to `0.0` for all non-compact glass.
+  final double compactLensEdgePull;
+
+  /// Local blur applied only to refracted edge samples in compact lenses.
+  ///
+  /// This is intentionally separate from [blur], which uses a full
+  /// BackdropFilter pass and would frost the whole segmented bubble.
+  final double compactLensEdgeBlur;
+
+  /// Neutral inner-shadow strength for compact segmented lenses.
+  ///
+  /// Applied inside the bubble body after refraction. Defaults to `0.0`.
+  final double compactLensInnerShadow;
+
   /// The intensity of the fresnel edge glow on the glass rim.
   ///
   /// Controls how visible the glass-edge luminosity is on the Standard
@@ -210,6 +277,41 @@ class LiquidGlassSettings with EquatableMixin {
       ambientStrength: lerpDouble(a.ambientStrength, b.ambientStrength, t)!,
       refractiveIndex: lerpDouble(a.refractiveIndex, b.refractiveIndex, t)!,
       saturation: lerpDouble(a.saturation, b.saturation, t)!,
+      refractionScale: lerpDouble(
+        a.refractionScale,
+        b.refractionScale,
+        t,
+      )!,
+      verticalRefractionScale: lerpDouble(
+        a.verticalRefractionScale,
+        b.verticalRefractionScale,
+        t,
+      )!,
+      sideFisheyeScale: lerpDouble(
+        a.sideFisheyeScale,
+        b.sideFisheyeScale,
+        t,
+      )!,
+      compactLensHeightPinch: lerpDouble(
+        a.compactLensHeightPinch,
+        b.compactLensHeightPinch,
+        t,
+      )!,
+      compactLensEdgePull: lerpDouble(
+        a.compactLensEdgePull,
+        b.compactLensEdgePull,
+        t,
+      )!,
+      compactLensEdgeBlur: lerpDouble(
+        a.compactLensEdgeBlur,
+        b.compactLensEdgeBlur,
+        t,
+      )!,
+      compactLensInnerShadow: lerpDouble(
+        a.compactLensInnerShadow,
+        b.compactLensInnerShadow,
+        t,
+      )!,
       glowIntensity: lerpDouble(a.glowIntensity, b.glowIntensity, t)!,
       specularSharpness: t < 0.5 ? a.specularSharpness : b.specularSharpness,
       standardOpacityMultiplier: lerpDouble(
@@ -238,6 +340,13 @@ class LiquidGlassSettings with EquatableMixin {
     double? ambientStrength,
     double? refractiveIndex,
     double? saturation,
+    double? refractionScale,
+    double? verticalRefractionScale,
+    double? sideFisheyeScale,
+    double? compactLensHeightPinch,
+    double? compactLensEdgePull,
+    double? compactLensEdgeBlur,
+    double? compactLensInnerShadow,
     double? glowIntensity,
     GlassSpecularSharpness? specularSharpness,
     double? standardOpacityMultiplier,
@@ -253,6 +362,16 @@ class LiquidGlassSettings with EquatableMixin {
         ambientStrength: ambientStrength ?? this.ambientStrength,
         refractiveIndex: refractiveIndex ?? this.refractiveIndex,
         saturation: saturation ?? this.saturation,
+        refractionScale: refractionScale ?? this.refractionScale,
+        verticalRefractionScale:
+            verticalRefractionScale ?? this.verticalRefractionScale,
+        sideFisheyeScale: sideFisheyeScale ?? this.sideFisheyeScale,
+        compactLensHeightPinch:
+            compactLensHeightPinch ?? this.compactLensHeightPinch,
+        compactLensEdgePull: compactLensEdgePull ?? this.compactLensEdgePull,
+        compactLensEdgeBlur: compactLensEdgeBlur ?? this.compactLensEdgeBlur,
+        compactLensInnerShadow:
+            compactLensInnerShadow ?? this.compactLensInnerShadow,
         glowIntensity: glowIntensity ?? this.glowIntensity,
         specularSharpness: specularSharpness ?? this.specularSharpness,
         standardOpacityMultiplier:
@@ -271,6 +390,13 @@ class LiquidGlassSettings with EquatableMixin {
         ambientStrength,
         refractiveIndex,
         saturation,
+        refractionScale,
+        verticalRefractionScale,
+        sideFisheyeScale,
+        compactLensHeightPinch,
+        compactLensEdgePull,
+        compactLensEdgeBlur,
+        compactLensInnerShadow,
         glowIntensity,
         specularSharpness,
         standardOpacityMultiplier,

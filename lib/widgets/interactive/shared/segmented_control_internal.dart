@@ -16,6 +16,9 @@
 // Both the tab bar and segmented control already share the right abstractions:
 // DraggableIndicatorPhysics, AnimatedGlassIndicator, and GlassSpring.
 
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../src/renderer/liquid_glass_renderer.dart';
@@ -45,6 +48,7 @@ class SegmentedControlContent extends StatefulWidget {
     required this.quality,
     this.indicatorSettings,
     this.backgroundKey,
+    this.indicatorShadow,
     this.interactionBehavior = GlassInteractionBehavior.full,
     this.glowColor,
     this.glowRadius = 1.5,
@@ -61,6 +65,7 @@ class SegmentedControlContent extends StatefulWidget {
   final double borderRadius;
   final GlassQuality quality;
   final GlobalKey? backgroundKey;
+  final List<BoxShadow>? indicatorShadow;
   final GlassInteractionBehavior interactionBehavior;
   final Color? glowColor;
   final double glowRadius;
@@ -84,11 +89,21 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
   // ── Gesture state ─────────────────────────────────────────────────────────
   bool _isDown = false;
   bool _isDragging = false;
+  bool _isTapSwitching = false;
+  Timer? _tapSwitchTimer;
+  final GlobalKey _labelLayerKey =
+      GlobalKey(debugLabel: 'GlassSegmentedControl.labelLayer');
 
   /// Current horizontal alignment of the indicator in the range [-1, 1].
   late double _xAlign = _computeXAlignmentForSegment(widget.selectedIndex);
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+  @override
+  void dispose() {
+    _tapSwitchTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant SegmentedControlContent oldWidget) {
@@ -123,20 +138,25 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
   // ── Gesture handlers ──────────────────────────────────────────────────────
 
   void _onDragDown(DragDownDetails details) {
+    _tapSwitchTimer?.cancel();
     setState(() => _isDown = true);
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
+    _tapSwitchTimer?.cancel();
     setState(() {
       _isDragging = true;
+      _isTapSwitching = false;
       _xAlign = _getAlignmentFromGlobalPosition(details.globalPosition);
     });
   }
 
   void _onDragEnd(DragEndDetails details) {
+    _tapSwitchTimer?.cancel();
     setState(() {
       _isDragging = false;
       _isDown = false;
+      _isTapSwitching = false;
     });
 
     final box = context.findRenderObject()! as RenderBox;
@@ -162,6 +182,7 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
   }
 
   void _onDragCancel() {
+    _tapSwitchTimer?.cancel();
     if (_isDragging) {
       final currentRelativeX = (_xAlign + 1) / 2;
       final targetSegmentIndex = DraggableIndicatorPhysics.computeTargetIndex(
@@ -173,6 +194,7 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
       setState(() {
         _isDragging = false;
         _isDown = false;
+        _isTapSwitching = false;
         _xAlign = _computeXAlignmentForSegment(targetSegmentIndex);
       });
       if (targetSegmentIndex != widget.selectedIndex) {
@@ -180,15 +202,33 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
       }
     } else {
       setState(
-        () => _xAlign = _computeXAlignmentForSegment(widget.selectedIndex),
+        () {
+          _isDown = false;
+          _isTapSwitching = false;
+          _xAlign = _computeXAlignmentForSegment(widget.selectedIndex);
+        },
       );
     }
   }
 
   void _onSegmentTap(int index) {
+    _tapSwitchTimer?.cancel();
     if (index != widget.selectedIndex) {
+      setState(() {
+        _isTapSwitching = true;
+        _xAlign = _computeXAlignmentForSegment(index);
+      });
       widget.onSegmentSelected(index);
+      _tapSwitchTimer = Timer(const Duration(milliseconds: 380), () {
+        if (!mounted) return;
+        setState(() => _isTapSwitching = false);
+      });
     }
+  }
+
+  void _endTapInteraction() {
+    if (_isDragging || !mounted) return;
+    setState(() => _isDown = false);
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -215,6 +255,45 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
           fontWeight: FontWeight.w500,
           color: _defaultUnselectedTextColor,
         );
+
+    final labelBackgroundKey = widget.backgroundKey ?? _labelLayerKey;
+
+    Widget buildSegmentLabels() {
+      return RepaintBoundary(
+        key: labelBackgroundKey,
+        child: Row(
+          children: [
+            for (var i = 0; i < widget.segments.length; i++)
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _onSegmentTap(i),
+                  onTapUp: (_) => _endTapInteraction(),
+                  onTapCancel: _endTapInteraction,
+                  behavior: HitTestBehavior.opaque,
+                  child: Semantics(
+                    button: true,
+                    selected: widget.selectedIndex == i,
+                    label: widget.segments[i],
+                    child: Center(
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 200),
+                        style: widget.selectedIndex == i
+                            ? selectedTextStyle
+                            : unselectedTextStyle,
+                        child: Text(
+                          widget.segments[i],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
 
     return Listener(
       // Raw pointer events fire BEFORE gesture recognizers and never compete
@@ -246,84 +325,98 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
               spring: GlassSpring.snappy(
                 duration: const Duration(milliseconds: 300),
               ),
-              // Show glass bloom when: pressed, dragging, OR indicator is still
-              // settling toward its target. Threshold 0.05 matches
-              // tab_bar_internal.dart for consistent cross-component behaviour.
-              value: _isDown || (alignment.x - targetAlignment).abs() > 0.05
+              value: _isDown ||
+                      _isDragging ||
+                      _isTapSwitching ||
+                      (alignment.x - targetAlignment).abs() > 0.05
                   ? 1.0
                   : 0.0,
               builder: (context, thickness, child) {
+                final isMoving = (alignment.x - targetAlignment).abs() > 0.05;
+                final isInteracting =
+                    _isDown || _isDragging || _isTapSwitching || isMoving;
+
+                Widget buildIndicator({
+                  required bool paintBackground,
+                  required bool paintGlass,
+                  double? lensThickness,
+                }) {
+                  return AnimatedGlassIndicator(
+                    velocity: velocity,
+                    itemCount: widget.segments.length,
+                    alignment: alignment,
+                    thickness: lensThickness ?? thickness,
+                    quality: widget.quality,
+                    indicatorColor: indicatorColor,
+                    isBackgroundIndicator: false,
+                    borderRadius: indicatorRadius,
+                    glassSettings: widget.indicatorSettings,
+                    backgroundKey: labelBackgroundKey,
+                    paintBackground: paintBackground,
+                    paintGlass: paintGlass,
+                    shadows: paintBackground && !_isDragging && !_isTapSwitching
+                        ? widget.indicatorShadow
+                        : null,
+                    glassBodyAlphaMultiplier: 0.04,
+                    glassEdgeAlphaMultiplier: 0.12,
+                    glassRimThickness:
+                        widget.indicatorSettings?.effectiveThickness,
+                  );
+                }
+
+                Widget buildRestingPill() {
+                  return buildIndicator(
+                    paintBackground: true,
+                    paintGlass: false,
+                    lensThickness: 0,
+                  );
+                }
+
+                Widget buildLens({double? lensThickness}) {
+                  return buildIndicator(
+                    paintBackground: false,
+                    paintGlass: true,
+                    lensThickness: lensThickness,
+                  );
+                }
+
+                final segmentLabels = buildSegmentLabels();
+
+                if (isInteracting) {
+                  final lensThickness =
+                      _isTapSwitching ? math.max(thickness, 0.72) : thickness;
+                  final restingOpacity = (1.0 - lensThickness / 0.72)
+                      .clamp(0.0, 1.0)
+                      .toDouble();
+
+                  return RepaintBoundary(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        if (restingOpacity > 0)
+                          Opacity(
+                            opacity: restingOpacity,
+                            child: buildRestingPill(),
+                          ),
+                        segmentLabels,
+                        buildLens(lensThickness: lensThickness),
+                      ],
+                    ),
+                  );
+                }
+
                 return RepaintBoundary(
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      AnimatedGlassIndicator(
-                        velocity: velocity,
-                        itemCount: widget.segments.length,
-                        alignment: alignment,
-                        thickness: thickness,
-                        quality: widget.quality,
-                        indicatorColor: indicatorColor,
-                        isBackgroundIndicator: false,
-                        borderRadius: indicatorRadius,
-                        glassSettings: widget.indicatorSettings,
-                        backgroundKey: widget.backgroundKey,
-                      ),
-                      // Segment labels always paint above the glass indicator.
-                      child!,
+                      buildRestingPill(),
+                      segmentLabels,
                     ],
                   ),
                 );
               },
-              child: Row(
-                children: [
-                  for (var i = 0; i < widget.segments.length; i++)
-                    Expanded(
-                      child: RepaintBoundary(
-                        child: GestureDetector(
-                          onTap: () => _onSegmentTap(i),
-                          onTapDown: (_) {
-                            // Trigger selection immediately on touch down.
-                            if (i != widget.selectedIndex) {
-                              widget.onSegmentSelected(i);
-                            }
-                          },
-                          behavior: HitTestBehavior.opaque,
-                          child: Semantics(
-                            button: true,
-                            selected: widget.selectedIndex == i,
-                            label: widget.segments[i],
-                            child: Center(
-                              child: AnimatedDefaultTextStyle(
-                                duration: const Duration(milliseconds: 200),
-                                style: widget.selectedIndex == i
-                                    ? selectedTextStyle
-                                    : unselectedTextStyle,
-                                child: Text(
-                                  widget.segments[i],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
             );
           },
-          child: Row(
-            children: [
-              for (var i = 0; i < widget.segments.length; i++)
-                Expanded(
-                  child: Center(
-                    child: Text(widget.segments[i]),
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
     );

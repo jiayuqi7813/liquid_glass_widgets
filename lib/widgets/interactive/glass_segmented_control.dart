@@ -19,7 +19,10 @@ import 'shared/segmented_control_internal.dart';
 /// - **Animated Glass Indicator**: Smoothly animates between segments
 /// - **Jelly Physics**: Organic squash and stretch effects during movement
 /// - **Drag Support**: Swipe between segments with velocity-based snapping
-/// - **Sharp Text**: Selected text stays sharp above the glass
+/// - **Liquid lens refraction** (Premium/Impeller): Labels sit between the
+///   resting pill and the glass lens; press/drag refracts text at the edges
+/// - **Standard path**: Optional [backgroundKey] on the label layer for Skia/Web
+///   shader sampling (see [GlassTabBar] for the same layering model)
 /// - **Flexible Sizing**: Automatically sizes segments evenly
 /// - **Customizable Appearance**: Full control over colors, sizes, and effects
 ///
@@ -128,6 +131,7 @@ class GlassSegmentedControl extends StatefulWidget {
     this.useOwnLayer = false,
     this.quality,
     this.backgroundKey,
+    this.indicatorShadow,
     // ── iOS 26 interaction ──────────────────────────────────────────────────
     this.interactionBehavior = GlassInteractionBehavior.full,
     this.glowColor,
@@ -250,8 +254,13 @@ class GlassSegmentedControl extends StatefulWidget {
   /// Defaults to [GlassQuality.standard] (backdrop filter).
   final GlassQuality? quality;
 
-  /// Optional background key for Skia/Web refraction.
+  /// Key on the segment label [RepaintBoundary] for Skia/Web shader refraction.
+  ///
+  /// On Impeller Premium, refraction uses the scene graph; this key is optional.
   final GlobalKey? backgroundKey;
+
+  /// Shadows for the resting indicator pill; suppressed during drag.
+  final List<BoxShadow>? indicatorShadow;
 
   // ── iOS 26 interaction ────────────────────────────────────────────────────
 
@@ -326,6 +335,7 @@ class _GlassSegmentedControlState extends State<GlassSegmentedControl> {
         borderRadius: widget.borderRadius,
         quality: effectiveQuality,
         backgroundKey: widget.backgroundKey,
+        indicatorShadow: widget.indicatorShadow,
         interactionBehavior: widget.interactionBehavior,
         glowColor: widget.glowColor,
         glowRadius: widget.glowRadius,

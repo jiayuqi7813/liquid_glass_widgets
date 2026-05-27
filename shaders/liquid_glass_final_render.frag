@@ -26,7 +26,13 @@ precision highp float; // mediump causes colour banding (10-bit mantissa on mobi
 // Slots 10-12: uOpticalProps (refractiveIndex, chromaticAberration, thickness)
 // Slots 13-15: uLightConfig  (lightIntensity, ambientStrength, saturation)
 // Slots 16-17: uLightDirection
-// Slot 18: uBlurSigma
+// Slot 18: uRefractionScale
+// Slot 19: uVerticalRefractionScale
+// Slot 20: uSideFisheyeScale
+// Slot 21: uCompactLensHeightPinch
+// Slot 22: uCompactLensEdgePull
+// Slot 23: uCompactLensEdgeBlur
+// Slot 24: uCompactLensInnerShadow
 uniform vec2 uSize;          // physical-pixel size of the backdrop capture
 uniform vec2 uGeometryOffset;
 uniform vec2 uGeometrySize;
@@ -35,6 +41,13 @@ uniform vec4 uGlassColor;
 uniform vec3 uOpticalProps;
 uniform vec3 uLightConfig;
 uniform vec2 uLightDirection;
+uniform float uRefractionScale;
+uniform float uVerticalRefractionScale;
+uniform float uSideFisheyeScale;
+uniform float uCompactLensHeightPinch;
+uniform float uCompactLensEdgePull;
+uniform float uCompactLensEdgeBlur;
+uniform float uCompactLensInnerShadow;
 
 uniform sampler2D uBackgroundTexture;
 uniform sampler2D uGeometryTexture;
@@ -126,6 +139,100 @@ void main() {
     #ifdef IMPELLER_TARGET_OPENGLES
         displacement.y = -displacement.y;
     #endif
+    displacement *= clamp(uRefractionScale, 0.0, 1.0);
+    displacement.y *= clamp(uVerticalRefractionScale, 0.0, 1.0);
+
+    // Segmented-control compact lens. The covered track is optically pinched
+    // inside the bubble, while text refraction is layered separately so it is
+    // not clamped to the rail transition mask.
+    float compactLens = 1.0 - clamp(uRefractionScale, 0.0, 1.0);
+    float compactGate = clamp(uSideFisheyeScale, 0.0, 1.0) *
+                        smoothstep(0.05, 0.35, compactLens);
+    float compactBlurMask = 0.0;
+    float compactEdgeBlurMask = 0.0;
+    float compactDispersionMask = 0.0;
+    float compactInnerShadowMask = 0.0;
+    float compactSampleMask = 0.0;
+    float compactSideSign = 0.0;
+    float compactCenterY = 0.0;
+    float compactRimMask = 0.0;
+    if (compactGate > 0.001) {
+        vec2 local01 = clamp(geometryUV, vec2(0.0), vec2(1.0));
+        float sideSign = sign(local01.x - 0.5);
+        float edgeX = abs(local01.x - 0.5) * 2.0;
+        float centerY = local01.y - 0.5;
+        float yAbs = abs(centerY);
+        float verticalBroad = 1.0 - smoothstep(0.42, 0.58, yAbs);
+        float hNorm = clamp(geometryData.b, 0.0, 0.999);
+        float edgeDistancePx = uThickness *
+                               (1.0 - sqrt(max(0.0, 1.0 - hNorm * hNorm)));
+        float shoulderMask = smoothstep(0.74, 0.94, edgeX) *
+                             (1.0 - smoothstep(0.992, 1.0, edgeX));
+        float outerMask = smoothstep(0.88, 0.999, edgeX);
+        float sideProfile = pow(smoothstep(0.66, 0.992, edgeX), 0.82);
+        float glyphBand = 1.0 - smoothstep(0.20, 0.36, yAbs);
+        float glyphEdgeMask = max(shoulderMask * 0.55, outerMask);
+        float lineBand = 1.0 - smoothstep(0.36, 0.50, yAbs);
+        float lineShoulderMask = smoothstep(0.955, 0.992, edgeX) *
+                                 (1.0 - smoothstep(0.998, 1.0, edgeX));
+        float lineOuterMask = smoothstep(0.972, 0.999, edgeX);
+        float lineEdgeMask = max(lineShoulderMask * 0.78, lineOuterMask) *
+                             lineBand;
+
+        float heightPinch = clamp(uCompactLensHeightPinch, 0.0, 1.0);
+        float edgePull = clamp(uCompactLensEdgePull, 0.0, 1.0);
+        float rimHoldPx = max(0.8, uGeometrySize.y * 0.020);
+        float rimWidthPx = max(3.0, uGeometrySize.y * mix(0.12, 0.22, heightPinch));
+        compactRimMask = (1.0 - smoothstep(rimHoldPx, rimWidthPx, edgeDistancePx)) *
+                         compactGate;
+        float bodyMask = smoothstep(rimHoldPx, rimWidthPx, edgeDistancePx) *
+                         compactGate;
+        float pinchYMask = mix(0.18, 1.0, smoothstep(0.14, 0.42, yAbs));
+        vec2 bodyDisplacement = vec2(
+            0.0,
+            centerY * uGeometrySize.y * heightPinch * bodyMask * pinchYMask
+        );
+
+        vec2 edgeDisplacement = displacement;
+        displacement = mix(bodyDisplacement, edgeDisplacement, compactRimMask);
+
+        float glyphWarpMask = max(glyphEdgeMask * glyphBand, lineEdgeMask) *
+                              compactGate;
+        vec2 glyphWarpDisplacement = vec2(0.0);
+        glyphWarpDisplacement.x -= sideSign * uGeometrySize.x *
+                                   (0.010 + 0.022 * edgePull) *
+                                   sideProfile * glyphBand * compactGate;
+        glyphWarpDisplacement.x += sideSign * centerY * uGeometrySize.y * 0.10 *
+                                   outerMask * glyphBand * edgePull *
+                                   compactGate;
+        glyphWarpDisplacement.y -= centerY * uGeometrySize.y * 0.96 *
+                                   glyphEdgeMask * glyphBand * edgePull *
+                                   compactGate;
+        glyphWarpDisplacement.y -= centerY * uGeometrySize.y * 0.42 *
+                                   lineEdgeMask * edgePull * compactGate;
+        displacement += glyphWarpDisplacement;
+
+        compactSideSign = sideSign;
+        compactCenterY = centerY;
+        compactSampleMask = max(max(compactRimMask,
+                                    heightPinch * bodyMask * pinchYMask),
+                                glyphWarpMask);
+        compactDispersionMask = max(outerMask, shoulderMask * 0.72) *
+                                glyphBand * compactGate *
+                                (0.35 + 0.65 * edgePull);
+        compactBlurMask = clamp(uCompactLensEdgeBlur, 0.0, 1.0) *
+                          max(outerMask, shoulderMask * 0.55) *
+                          glyphBand * compactGate *
+                          (0.35 + 0.65 * edgePull);
+        compactEdgeBlurMask = clamp(uCompactLensEdgeBlur, 0.0, 1.0) *
+                              pow(compactRimMask, 0.72);
+        compactSampleMask = max(compactSampleMask, compactEdgeBlurMask);
+        float innerY = smoothstep(0.32, 0.49, yAbs);
+        float sideInner = smoothstep(0.58, 0.96, edgeX) * verticalBroad;
+        compactInnerShadowMask = clamp(uCompactLensInnerShadow, 0.0, 1.0) *
+                                 max(innerY * bodyMask * 0.72,
+                                     sideInner * compactRimMask * 0.62);
+    }
 
     // Apply refraction — with optional chromatic aberration.
     // PP1 optimisation: when the surface normal is flat (pointing straight up,
@@ -139,7 +246,7 @@ void main() {
     // a normal tilted < 0.6° from vertical — visually indistinguishable from a
     // zero-displacement sample at any display resolution.
     vec4 refractColor;
-    if (dot(normalXY, normalXY) < 1e-4) {
+    if (dot(normalXY, normalXY) < 1e-4 && compactSampleMask < 0.001) {
         // Flat interior — surface is pointing straight at the camera.
         // Displacement is mathematically zero; sample the background directly.
         refractColor = texture(uBackgroundTexture, screenUV);
@@ -147,9 +254,20 @@ void main() {
         vec2 refractedUV = screenUV + displacement * invTexSize;
         refractColor = texture(uBackgroundTexture, refractedUV);
     } else {
-        float dispersionStrength = uChromaticAberration * 0.5;
+        float dispersionStrength = uChromaticAberration * 0.45;
         vec2 redOffset  = displacement * (1.0 + dispersionStrength);
         vec2 blueOffset = displacement * (1.0 - dispersionStrength);
+        if (compactDispersionMask > 0.001) {
+            vec2 chromaAxis = normalize(vec2(
+                compactSideSign,
+                compactCenterY * 1.8 + 0.001
+            ));
+            vec2 compactChromaOffset = chromaAxis * uGeometrySize.y *
+                                       uChromaticAberration *
+                                       compactDispersionMask * 0.20;
+            redOffset += compactChromaOffset;
+            blueOffset -= compactChromaOffset;
+        }
 
         vec2 redUV   = screenUV + redOffset   * invTexSize;
         vec2 greenUV = screenUV + displacement * invTexSize;
@@ -160,6 +278,32 @@ void main() {
         float blue        = texture(uBackgroundTexture, blueUV).b;
 
         refractColor = vec4(red, greenSample.g, blue, greenSample.a);
+    }
+
+    float compactBlurAmount = max(compactBlurMask, compactEdgeBlurMask);
+    if (compactBlurAmount > 0.001) {
+        vec2 blurUV = screenUV + displacement * invTexSize;
+        float blurPx = uGeometrySize.y *
+                       (0.004 + 0.040 * compactEdgeBlurMask +
+                        0.018 * compactBlurMask);
+        vec2 blurDx = vec2(blurPx * invTexSize.x, 0.0);
+        vec2 blurDy = vec2(0.0, blurPx * invTexSize.y);
+        vec4 blurred = texture(uBackgroundTexture, blurUV) * 0.25;
+        blurred += (
+            texture(uBackgroundTexture, blurUV + blurDx) +
+            texture(uBackgroundTexture, blurUV - blurDx) +
+            texture(uBackgroundTexture, blurUV + blurDy) +
+            texture(uBackgroundTexture, blurUV - blurDy)
+        ) * 0.125;
+        blurred += (
+            texture(uBackgroundTexture, blurUV + blurDx + blurDy) +
+            texture(uBackgroundTexture, blurUV + blurDx - blurDy) +
+            texture(uBackgroundTexture, blurUV - blurDx + blurDy) +
+            texture(uBackgroundTexture, blurUV - blurDx - blurDy)
+        ) * 0.0625;
+        float blurMix = clamp(compactBlurMask + compactEdgeBlurMask * 0.55,
+                              0.0, 0.82);
+        refractColor = mix(refractColor, blurred, blurMix);
     }
 
     vec4 finalColor = applyGlassColor(refractColor, uGlassColor);
@@ -186,11 +330,8 @@ void main() {
     float backdropLuma     = dot(refractColor.rgb, LUMA_WEIGHTS);
     float adaptiveStrength = mix(1.2, 0.8, backdropLuma);
 
-    // Apply saturation with adaptive scaling.
-    // adaptiveStrength > 1.0 → more vivid (dark backdrop).
-    // adaptiveStrength < 1.0 → more muted (bright/uniform backdrop).
-    // uSaturation is the artist-set base; we only modulate it, never replace it.
-    finalColor.rgb = applySaturation(finalColor.rgb, uSaturation * adaptiveStrength);
+    float adaptiveSaturation = 1.0 + (uSaturation - 1.0) * adaptiveStrength;
+    finalColor.rgb = applySaturation(finalColor.rgb, adaptiveSaturation);
 
     // Modulate glass tint blend weight by adaptiveStrength.
     // On dark backgrounds the tint reads heavier (+20%); on bright backgrounds
@@ -202,6 +343,9 @@ void main() {
                          uGlassColor.rgb,
                          uGlassColor.a * 0.12 * (adaptiveStrength - 1.0));
 
+    if (compactInnerShadowMask > 0.001) {
+        finalColor.rgb *= 1.0 - compactInnerShadowMask * 0.18;
+    }
 
     // Edge lighting — uses the true normal.xy (V1; was normalize(displacement))
     float normalizedHeight = geometryData.b;
@@ -266,4 +410,3 @@ void main() {
     float alpha  = geometryData.a;
     fragColor    = vec4(finalColor.rgb * alpha, alpha);
 }
-

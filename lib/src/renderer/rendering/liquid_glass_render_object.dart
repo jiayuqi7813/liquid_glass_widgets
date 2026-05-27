@@ -137,7 +137,14 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
         ])
         // Use pre-cached direction — cos/sin only recomputed when lightAngle changes,
         // not on every visibility, blur, or color animation frame.
-        ..setOffset(_cachedLightDir);
+        ..setOffset(_cachedLightDir)
+        ..setFloat(settings.refractionScale.clamp(0.0, 1.0))
+        ..setFloat(settings.verticalRefractionScale.clamp(0.0, 1.0))
+        ..setFloat(settings.sideFisheyeScale.clamp(0.0, 1.0))
+        ..setFloat(settings.compactLensHeightPinch.clamp(0.0, 1.0))
+        ..setFloat(settings.compactLensEdgePull.clamp(0.0, 1.0))
+        ..setFloat(settings.compactLensEdgeBlur.clamp(0.0, 1.0))
+        ..setFloat(settings.compactLensInnerShadow.clamp(0.0, 1.0));
     });
   }
 

@@ -74,6 +74,15 @@ class AnimatedGlassIndicator extends StatelessWidget {
   /// muddy the liquid glass animation. Pass `null` (default) for no shadow.
   final List<BoxShadow>? shadows;
 
+  /// Optional overrides for [GlassEffect] shader body opacity (Standard path).
+  final double? glassBodyAlphaMultiplier;
+
+  /// Optional overrides for [GlassEffect] edge opacity (Standard path).
+  final double? glassEdgeAlphaMultiplier;
+
+  /// Optional exact rim thickness for [GlassEffect] (Standard path).
+  final double? glassRimThickness;
+
   const AnimatedGlassIndicator({
     super.key,
     required this.velocity,
@@ -94,6 +103,9 @@ class AnimatedGlassIndicator extends StatelessWidget {
     this.exactWidth,
     this.exactOffset,
     this.shadows,
+    this.glassBodyAlphaMultiplier,
+    this.glassEdgeAlphaMultiplier,
+    this.glassRimThickness,
   });
 
   static const _baseGlassSettings = LiquidGlassSettings(
@@ -124,6 +136,7 @@ class AnimatedGlassIndicator extends StatelessWidget {
   ///    plus a generous margin for Impeller subpixel rounding.
   static const _jellyClipExpansion = EdgeInsets.symmetric(
     horizontal: 20.0,
+    vertical: 12.0,
   );
 
   @override
@@ -182,12 +195,13 @@ class AnimatedGlassIndicator extends StatelessWidget {
       // uThickness is declared but unused in interactive_indicator.frag;
       // uRimThickness is what actually controls the visible hairline rim width.
       // Clamp to 0–8 px: beyond 8 the rim bleeds into the pill body.
-      rimThickness: (glassSettings?.effectiveThickness ?? 0.5).clamp(0.0, 8.0),
+      rimThickness: glassRimThickness ??
+          (glassSettings?.effectiveThickness ?? 0.5).clamp(0.0, 8.0),
       // Calibrate standard-tier indicator styling in Dart space instead of the shader:
       // Soften the forced rim outline to match premium's elegance and keep the body translucent.
       ambientRim: isStdPath ? 0.08 : 0.1,
-      baseAlphaMultiplier: isStdPath ? 0.15 : 0.2,
-      edgeAlphaMultiplier: isStdPath ? 0.35 : 0.4,
+      baseAlphaMultiplier: glassBodyAlphaMultiplier ?? (isStdPath ? 0.15 : 0.2),
+      edgeAlphaMultiplier: glassEdgeAlphaMultiplier ?? (isStdPath ? 0.35 : 0.4),
       child: const GlassGlow(
         glowColor: Colors
             .transparent, // caused grey rectangle flicker if clicking multiple times
