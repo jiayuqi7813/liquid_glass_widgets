@@ -12,6 +12,7 @@ import '../../../utils/glass_spring.dart';
 import '../../shared/animated_glass_indicator.dart';
 import '../glass_bottom_bar.dart' show MaskingQuality;
 import '../glass_tab_bar.dart' show GlassTab, DividerSettings;
+import 'vector_foreground_renderer.dart';
 
 // =============================================================================
 // TabBarContent — draggable indicator + tab layout
@@ -555,6 +556,14 @@ class TabBarContentState extends State<TabBarContent>
     }
   }
 
+  List<VectorForegroundItem> get _vectorItems => [
+        for (final tab in widget.tabs)
+          VectorForegroundItem(
+            label: tab.label,
+            icon: tab.icon,
+          ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     final indicatorColor = widget.indicatorColor ?? _defaultIndicatorColor;
@@ -664,7 +673,9 @@ class TabBarContentState extends State<TabBarContent>
                   borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
-                  foregroundKey: _foregroundKey,
+                  foregroundKey: widget.quality == GlassQuality.premium
+                      ? null
+                      : _foregroundKey,
                   foregroundRevision: foregroundRevision,
                   expansion:
                       widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
@@ -727,6 +738,36 @@ class TabBarContentState extends State<TabBarContent>
                     ),
                     if (canShowIndicator)
                       buildIndicator(paintBackground: false, paintGlass: true),
+                    if (isPremiumQuality && canShowIndicator)
+                      ClipRRect(
+                        borderRadius:
+                            widget.tabBarBorderRadius ?? BorderRadius.zero,
+                        child: TabBarVectorForegroundLayer(
+                          items: _vectorItems,
+                          selectedIndex: widget.selectedIndex,
+                          selectedLabelStyle: selectedLabelStyle,
+                          unselectedLabelStyle: unselectedLabelStyle,
+                          selectedIconColor: selectedIconColor,
+                          unselectedIconColor: unselectedIconColor,
+                          iconSize: widget.iconSize,
+                          padding: widget.labelPadding,
+                          itemCount: widget.tabs.length,
+                          alignment: alignment,
+                          thickness: thickness,
+                          expansion: widget.maskingQuality == MaskingQuality.off
+                              ? 0.0
+                              : 8.0,
+                          borderRadius:
+                              widget.indicatorBorderRadius?.topLeft.x ?? 16,
+                          indicatorLeft: screenLeft,
+                          indicatorWidth: _indWidthSpring.value,
+                          scrollOffset: widget.scrollController.hasClients
+                              ? widget.scrollController.offset
+                              : 0.0,
+                          itemOffsets: _tabOffsets,
+                          itemWidths: _tabWidths,
+                        ),
+                      ),
                     if (isPremiumQuality)
                       ClipRRect(
                         borderRadius:
@@ -744,6 +785,22 @@ class TabBarContentState extends State<TabBarContent>
                   alignment: alignment,
                   borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
                 );
+                final vectorForegroundLayer = TabBarVectorForegroundLayer(
+                  items: _vectorItems,
+                  selectedIndex: widget.selectedIndex,
+                  selectedLabelStyle: selectedLabelStyle,
+                  unselectedLabelStyle: unselectedLabelStyle,
+                  selectedIconColor: selectedIconColor,
+                  unselectedIconColor: unselectedIconColor,
+                  iconSize: widget.iconSize,
+                  padding: widget.labelPadding,
+                  itemCount: widget.tabs.length,
+                  alignment: alignment,
+                  thickness: thickness,
+                  expansion:
+                      widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
+                  borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
+                );
 
                 return Stack(
                   clipBehavior: Clip.none,
@@ -759,6 +816,8 @@ class TabBarContentState extends State<TabBarContent>
                         paintBackground: false,
                         paintGlass: true,
                       ),
+                    if (canShowIndicator && isPremiumQuality)
+                      vectorForegroundLayer,
                     if (isPremiumQuality) visibleForegroundLayer,
                   ],
                 );

@@ -24,6 +24,7 @@ import 'shared/bottom_bar_internal.dart';
 import 'shared/glass_search_bar_config.dart';
 import 'shared/searchable_bottom_bar_controller.dart';
 import 'shared/searchable_bottom_bar_internal.dart';
+import 'shared/vector_foreground_renderer.dart';
 
 export 'shared/glass_search_bar_config.dart';
 
@@ -743,6 +744,37 @@ class _GlassSearchableBottomBarState extends State<GlassSearchableBottomBar>
                               widget.searchConfig.onSearchToggle(false),
                           foregroundBuilder: (ctx, intensity, alignment) =>
                               _buildForegroundTabRow(),
+                          vectorForegroundBuilder: (
+                            ctx,
+                            intensity,
+                            alignment,
+                            transform,
+                            radius,
+                          ) =>
+                              BottomBarVectorForegroundLayer(
+                            items: [
+                              for (final tab in widget.tabs)
+                                VectorForegroundItem(
+                                  label: tab.label,
+                                  icon: tab.icon,
+                                  activeIcon: tab.activeIcon,
+                                ),
+                            ],
+                            selectedIndex: widget.selectedIndex,
+                            selectedIconColor: widget.selectedIconColor,
+                            unselectedIconColor: widget.unselectedIconColor,
+                            iconSize: widget.iconSize,
+                            labelFontSize: widget.labelFontSize,
+                            iconLabelSpacing: widget.iconLabelSpacing,
+                            tabPadding: widget.tabPadding,
+                            itemCount: widget.tabs.length,
+                            alignment: alignment,
+                            thickness: intensity,
+                            expansion: widget.indicatorExpansion,
+                            transform: transform,
+                            borderRadius: radius,
+                            textStyle: widget.textStyle,
+                          ),
                           childUnselected: _buildTabRow(selected: false),
                           selectedTabBuilder: (ctx, intensity, alignment) =>
                               _buildTabRow(

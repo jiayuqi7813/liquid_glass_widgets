@@ -623,7 +623,14 @@ class _GlassBottomBarState extends State<GlassBottomBar> {
                       vectorForegroundBuilder:
                           (context, intensity, alignment, transform, radius) =>
                               BottomBarVectorForegroundLayer(
-                        tabs: widget.tabs,
+                        items: [
+                          for (final tab in widget.tabs)
+                            VectorForegroundItem(
+                              label: tab.label,
+                              icon: tab.icon,
+                              activeIcon: tab.activeIcon,
+                            ),
+                        ],
                         selectedIndex: widget.selectedIndex,
                         selectedIconColor: widget.selectedIconColor,
                         unselectedIconColor: widget.unselectedIconColor,

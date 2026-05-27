@@ -110,6 +110,7 @@ class SearchableTabIndicator extends StatefulWidget {
     this.indicatorSettings,
     this.backgroundKey,
     this.foregroundBuilder,
+    this.vectorForegroundBuilder,
     this.collapsedLogoBuilder,
     this.indicatorExpansion = 14,
     this.interactionGlowColor,
@@ -139,6 +140,13 @@ class SearchableTabIndicator extends StatefulWidget {
   final MaskingQuality maskingQuality;
   final GlobalKey? backgroundKey;
   final Widget Function(BuildContext, double, Alignment)? foregroundBuilder;
+  final Widget Function(
+    BuildContext,
+    double,
+    Alignment,
+    Matrix4,
+    double,
+  )? vectorForegroundBuilder;
   final bool isSearchActive;
   final VoidCallback onDismissSearch;
   final WidgetBuilder? collapsedLogoBuilder;
@@ -409,8 +417,24 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                   expansion: widget.indicatorExpansion,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
-                  foregroundKey: _foregroundKey,
+                  foregroundKey: widget.quality == GlassQuality.premium
+                      ? null
+                      : _foregroundKey,
                   foregroundRevision: foregroundRevision,
+                ),
+
+              if (widget.quality == GlassQuality.premium &&
+                  widget.visible &&
+                  thickness > 0.05 &&
+                  widget.vectorForegroundBuilder != null)
+                Positioned.fill(
+                  child: widget.vectorForegroundBuilder!(
+                    context,
+                    thickness,
+                    alignment,
+                    Matrix4.identity(),
+                    effRadius,
+                  ),
                 ),
 
               if (widget.quality == GlassQuality.premium)
@@ -567,9 +591,25 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                 expansion: widget.indicatorExpansion,
                 glassSettings: widget.indicatorSettings,
                 backgroundKey: widget.backgroundKey,
-                foregroundKey: _foregroundKey,
+                foregroundKey: widget.quality == GlassQuality.premium
+                    ? null
+                    : _foregroundKey,
                 foregroundRevision: foregroundRevision,
               ),
+
+              if (widget.quality == GlassQuality.premium &&
+                  widget.visible &&
+                  thickness > 0.05 &&
+                  widget.vectorForegroundBuilder != null)
+                Positioned.fill(
+                  child: widget.vectorForegroundBuilder!(
+                    context,
+                    thickness,
+                    alignment,
+                    jellyTransform,
+                    effRadius,
+                  ),
+                ),
 
               if (widget.quality == GlassQuality.premium)
                 Positioned.fill(
