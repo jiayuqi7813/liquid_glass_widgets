@@ -25,7 +25,6 @@ import 'shared/bottom_bar_internal.dart'
         TabIndicator,
         kBottomBarGlassDefaults;
 import 'shared/bar_layout_utils.dart';
-import 'shared/vector_foreground_renderer.dart';
 
 /// A glass morphism bottom navigation bar following Apple's design patterns.
 ///
@@ -224,7 +223,6 @@ class GlassBottomBar extends StatefulWidget {
     this.interactionGlowRadius = 1.5,
     this.interactionBehavior = GlassInteractionBehavior.full,
     this.pressScale = 1.04,
-    this.debugForegroundLayout = false,
   })  : assert(tabs.length > 0, 'GlassBottomBar requires at least one tab'),
         assert(
           selectedIndex >= 0 && selectedIndex < tabs.length,
@@ -303,11 +301,6 @@ class GlassBottomBar extends StatefulWidget {
   ///
   /// Defaults to 1.04 (4% growth — matches iOS 26 Apple News pill).
   final double pressScale;
-
-  /// Prints premium vector foreground layout metrics while debugging.
-  ///
-  /// Useful when diagnosing pressed-state icon/label drift. Defaults to false.
-  final bool debugForegroundLayout;
 
   // ===========================================================================
   // Tab Configuration
@@ -624,35 +617,6 @@ class _GlassBottomBarState extends State<GlassBottomBar> {
                       interactionScale: widget.interactionBehavior.hasScale
                           ? widget.pressScale
                           : 1.0,
-                      foregroundBuilder: (context, intensity, alignment) =>
-                          _buildForegroundTabs(),
-                      vectorForegroundBuilder:
-                          (context, intensity, alignment, transform, radius) =>
-                              BottomBarVectorForegroundLayer(
-                        items: [
-                          for (final tab in widget.tabs)
-                            VectorForegroundItem(
-                              label: tab.label,
-                              icon: tab.icon,
-                              activeIcon: tab.activeIcon,
-                            ),
-                        ],
-                        selectedIndex: widget.selectedIndex,
-                        selectedIconColor: widget.selectedIconColor,
-                        unselectedIconColor: widget.unselectedIconColor,
-                        iconSize: widget.iconSize,
-                        labelFontSize: widget.labelFontSize,
-                        iconLabelSpacing: widget.iconLabelSpacing,
-                        tabPadding: widget.tabPadding,
-                        itemCount: widget.tabs.length,
-                        alignment: alignment,
-                        thickness: intensity,
-                        expansion: widget.indicatorExpansion,
-                        transform: transform,
-                        borderRadius: radius,
-                        debugLayout: widget.debugForegroundLayout,
-                        textStyle: widget.textStyle,
-                      ),
                       childUnselected: Row(
                         children: [
                           for (var i = 0; i < widget.tabs.length; i++)
@@ -766,33 +730,6 @@ class _GlassBottomBarState extends State<GlassBottomBar> {
                     ),
                   )
                 : const SizedBox.shrink(),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildForegroundTabs() {
-    return Row(
-      children: [
-        for (var i = 0; i < widget.tabs.length; i++)
-          Expanded(
-            child: BottomBarTabItem(
-              tab: widget.tabs[i],
-              selected: i == widget.selectedIndex,
-              selectedIconColor: widget.selectedIconColor,
-              unselectedIconColor: widget.unselectedIconColor,
-              iconSize: widget.iconSize,
-              labelFontSize: widget.labelFontSize,
-              textStyle: widget.textStyle,
-              iconLabelSpacing: widget.iconLabelSpacing,
-              glowDuration: widget.glowDuration,
-              glowBlurRadius: widget.glowBlurRadius,
-              glowSpreadRadius: widget.glowSpreadRadius,
-              glowOpacity: widget.glowOpacity,
-              // onTap is null: all tap selection goes through
-              // TabIndicator.onBarTapDown (prevents double-fire).
-              onTap: null,
-            ),
           ),
       ],
     );

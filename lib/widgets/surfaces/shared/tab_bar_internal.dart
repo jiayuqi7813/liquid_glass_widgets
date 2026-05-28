@@ -12,7 +12,6 @@ import '../../../utils/glass_spring.dart';
 import '../../shared/animated_glass_indicator.dart';
 import '../glass_bottom_bar.dart' show MaskingQuality;
 import '../glass_tab_bar.dart' show GlassTab, DividerSettings;
-import 'vector_foreground_renderer.dart';
 
 // =============================================================================
 // TabBarContent — draggable indicator + tab layout
@@ -112,7 +111,6 @@ class TabBarContentState extends State<TabBarContent>
   late SingleSpringController _indWidthSpring;
 
   late List<GlobalKey> _tabKeys;
-  final GlobalKey _foregroundKey = GlobalKey();
   List<double> _tabWidths = [];
   List<double> _tabOffsets = [];
 
@@ -556,14 +554,6 @@ class TabBarContentState extends State<TabBarContent>
     }
   }
 
-  List<VectorForegroundItem> get _vectorItems => [
-        for (final tab in widget.tabs)
-          VectorForegroundItem(
-            label: tab.label,
-            icon: tab.icon,
-          ),
-      ];
-
   @override
   Widget build(BuildContext context) {
     final indicatorColor = widget.indicatorColor ?? _defaultIndicatorColor;
@@ -588,14 +578,6 @@ class TabBarContentState extends State<TabBarContent>
       selectedIconColor,
       unselectedIconColor,
     );
-    final foregroundRevision = Object.hashAll([
-      widget.selectedIndex,
-      widget.isScrollable,
-      widget.quality,
-      for (final tab in widget.tabs) tab.hashCode,
-    ]);
-    final foregroundTextureLayer =
-        RepaintBoundary(key: _foregroundKey, child: tabLabels);
 
     return RawGestureDetector(
       gestures: {
@@ -673,10 +655,6 @@ class TabBarContentState extends State<TabBarContent>
                   borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
-                  foregroundKey: widget.quality == GlassQuality.premium
-                      ? null
-                      : _foregroundKey,
-                  foregroundRevision: foregroundRevision,
                   expansion:
                       widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
                   paintBackground: paintBackground,
@@ -697,128 +675,67 @@ class TabBarContentState extends State<TabBarContent>
                 final physics = _isDraggingIndicator
                     ? const NeverScrollableScrollPhysics()
                     : const ClampingScrollPhysics();
-                final bool isPremiumQuality =
-                    widget.quality == GlassQuality.premium;
-                final foregroundScrollView =
-                    NotificationListener<ScrollStartNotification>(
-                  onNotification: (_) {
-                    if (_isDown) setState(() => _isDown = false);
-                    return false;
-                  },
-                  child: SingleChildScrollView(
-                    controller: widget.scrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics: physics,
-                    child: isPremiumQuality
-                        ? _buildVisibleForegroundLayer(
-                            child: tabLabels,
-                            thickness: thickness,
-                            indicatorLeft: currentValue,
-                            indicatorWidth: _indWidthSpring.value,
-                            borderRadius:
-                                widget.indicatorBorderRadius?.topLeft.x ?? 16,
-                          )
-                        : foregroundTextureLayer,
-                  ),
-                );
 
                 return Stack(
+                  clipBehavior: Clip.none,
                   children: [
+                    // ── Layer 1: clipped content ────────────────────────────────────
+                    // ClipRRect clips to the tab bar's rounded corners so the solid
+                    // background pill and tab labels don't overflow the corner radius.
                     ClipRRect(
                       borderRadius:
                           widget.tabBarBorderRadius ?? BorderRadius.zero,
                       child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
+                          // Background solid pill — clips with the bar (rendered before
+                          // labels so labels paint above the pill — correct z-order).
                           if (canShowIndicator)
                             buildIndicator(
                                 paintBackground: true, paintGlass: false),
-                          if (!isPremiumQuality) foregroundScrollView,
+
+                          // Tab labels (scrollable) — rendered after pill so they
+                          // paint on top and are not obscured by the indicator.
+                          NotificationListener<ScrollStartNotification>(
+                            onNotification: (_) {
+                              if (_isDown) setState(() => _isDown = false);
+                              return false;
+                            },
+                            child: SingleChildScrollView(
+                              controller: widget.scrollController,
+                              scrollDirection: Axis.horizontal,
+                              physics: physics,
+                              child: tabLabels,
+                            ),
+                          ),
                         ],
                       ),
                     ),
+
+                    // ── Layer 2: glass bloom (above all clips) ──────────────────────
                     if (canShowIndicator)
                       buildIndicator(paintBackground: false, paintGlass: true),
-                    if (isPremiumQuality && canShowIndicator)
-                      ClipRRect(
-                        borderRadius:
-                            widget.tabBarBorderRadius ?? BorderRadius.zero,
-                        child: TabBarVectorForegroundLayer(
-                          items: _vectorItems,
-                          selectedIndex: widget.selectedIndex,
-                          selectedLabelStyle: selectedLabelStyle,
-                          unselectedLabelStyle: unselectedLabelStyle,
-                          selectedIconColor: selectedIconColor,
-                          unselectedIconColor: unselectedIconColor,
-                          iconSize: widget.iconSize,
-                          padding: widget.labelPadding,
-                          itemCount: widget.tabs.length,
-                          alignment: alignment,
-                          thickness: thickness,
-                          expansion: widget.maskingQuality == MaskingQuality.off
-                              ? 0.0
-                              : 8.0,
-                          borderRadius:
-                              widget.indicatorBorderRadius?.topLeft.x ?? 16,
-                          indicatorLeft: screenLeft,
-                          indicatorWidth: _indWidthSpring.value,
-                          scrollOffset: widget.scrollController.hasClients
-                              ? widget.scrollController.offset
-                              : 0.0,
-                          itemOffsets: _tabOffsets,
-                          itemWidths: _tabWidths,
-                        ),
-                      ),
-                    if (isPremiumQuality)
-                      ClipRRect(
-                        borderRadius:
-                            widget.tabBarBorderRadius ?? BorderRadius.zero,
-                        child: foregroundScrollView,
-                      ),
                   ],
                 );
               } else {
+                // Non-scrollable mode: stacking background, labels, glass without clipping.
+                //
+                // Premium: glass renders ABOVE labels — Impeller's physical refraction
+                // wraps the icon correctly (it refracts around it, not covers it).
+                //
+                // Standard/Minimal: glass renders BELOW labels — the 2D shader is an
+                // opaque paint pass that would obscure the icon if placed on top.
                 final bool isPremiumQuality =
                     widget.quality == GlassQuality.premium;
-                final visibleForegroundLayer = _buildVisibleForegroundLayer(
-                  child: tabLabels,
-                  thickness: thickness,
-                  alignment: alignment,
-                  borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
-                );
-                final vectorForegroundLayer = TabBarVectorForegroundLayer(
-                  items: _vectorItems,
-                  selectedIndex: widget.selectedIndex,
-                  selectedLabelStyle: selectedLabelStyle,
-                  unselectedLabelStyle: unselectedLabelStyle,
-                  selectedIconColor: selectedIconColor,
-                  unselectedIconColor: unselectedIconColor,
-                  iconSize: widget.iconSize,
-                  padding: widget.labelPadding,
-                  itemCount: widget.tabs.length,
-                  alignment: alignment,
-                  thickness: thickness,
-                  expansion:
-                      widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
-                  borderRadius: widget.indicatorBorderRadius?.topLeft.x ?? 16,
-                );
-
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
                     if (canShowIndicator)
                       buildIndicator(
-                        paintBackground: true,
-                        paintGlass: !isPremiumQuality,
-                      ),
-                    if (!isPremiumQuality) foregroundTextureLayer,
+                          paintBackground: true, paintGlass: !isPremiumQuality),
+                    tabLabels,
                     if (canShowIndicator && isPremiumQuality)
-                      buildIndicator(
-                        paintBackground: false,
-                        paintGlass: true,
-                      ),
-                    if (canShowIndicator && isPremiumQuality)
-                      vectorForegroundLayer,
-                    if (isPremiumQuality) visibleForegroundLayer,
+                      buildIndicator(paintBackground: false, paintGlass: true),
                   ],
                 );
               }
@@ -826,33 +743,6 @@ class TabBarContentState extends State<TabBarContent>
           );
         },
       ),
-    );
-  }
-
-  Widget _buildVisibleForegroundLayer({
-    required Widget child,
-    required double thickness,
-    required double borderRadius,
-    Alignment? alignment,
-    double? indicatorLeft,
-    double? indicatorWidth,
-  }) {
-    final source = RepaintBoundary(key: _foregroundKey, child: child);
-    final shouldHideInsideLens =
-        widget.quality == GlassQuality.premium && thickness > 0.05;
-    if (!shouldHideInsideLens) return source;
-
-    return ClipPath(
-      clipper: _InverseTabIndicatorClipper(
-        itemCount: widget.tabs.length,
-        alignment: alignment,
-        indicatorLeft: indicatorLeft,
-        indicatorWidth: indicatorWidth,
-        borderRadius: borderRadius,
-        expansion: widget.maskingQuality == MaskingQuality.off ? 0.0 : 8.0,
-        thickness: thickness,
-      ),
-      child: source,
     );
   }
 
@@ -867,7 +757,6 @@ class TabBarContentState extends State<TabBarContent>
       (index) {
         final tab = widget.tabs[index];
         final isSelected = index == widget.selectedIndex;
-
         return KeyedSubtree(
           key: _tabKeys[index],
           child: RepaintBoundary(
@@ -918,57 +807,6 @@ class TabBarContentState extends State<TabBarContent>
           .map((tab) => tab is KeyedSubtree ? Expanded(child: tab) : tab)
           .toList(),
     );
-  }
-}
-
-class _InverseTabIndicatorClipper extends CustomClipper<Path> {
-  const _InverseTabIndicatorClipper({
-    required this.itemCount,
-    required this.borderRadius,
-    required this.expansion,
-    required this.thickness,
-    this.alignment,
-    this.indicatorLeft,
-    this.indicatorWidth,
-  });
-
-  final int itemCount;
-  final Alignment? alignment;
-  final double? indicatorLeft;
-  final double? indicatorWidth;
-  final double borderRadius;
-  final double expansion;
-  final double thickness;
-
-  @override
-  Path getClip(Size size) {
-    final slotWidth = indicatorWidth ?? size.width / itemCount;
-    final left = indicatorLeft ??
-        ((alignment?.x ?? 0.0) + 1.0) * 0.5 * (size.width - slotWidth);
-    final grow = expansion * thickness;
-    final lensRect =
-        Rect.fromLTWH(left, 0, slotWidth, size.height).inflate(grow);
-    final path = Path()
-      ..fillType = PathFillType.evenOdd
-      ..addRect(Offset.zero & size)
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          lensRect,
-          Radius.circular(borderRadius + grow),
-        ),
-      );
-    return path;
-  }
-
-  @override
-  bool shouldReclip(covariant _InverseTabIndicatorClipper oldClipper) {
-    return itemCount != oldClipper.itemCount ||
-        alignment != oldClipper.alignment ||
-        indicatorLeft != oldClipper.indicatorLeft ||
-        indicatorWidth != oldClipper.indicatorWidth ||
-        borderRadius != oldClipper.borderRadius ||
-        expansion != oldClipper.expansion ||
-        thickness != oldClipper.thickness;
   }
 }
 

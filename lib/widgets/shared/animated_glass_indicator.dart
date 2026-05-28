@@ -89,6 +89,10 @@ class AnimatedGlassIndicator extends StatelessWidget {
   /// Optional exact rim thickness for [GlassEffect] (Standard path).
   final double? glassRimThickness;
 
+  /// Applies compact segmented-control lens defaults when no explicit compact
+  /// lens parameters are supplied.
+  final bool useCompactLensDefaults;
+
   const AnimatedGlassIndicator({
     super.key,
     required this.velocity,
@@ -114,9 +118,24 @@ class AnimatedGlassIndicator extends StatelessWidget {
     this.glassBodyAlphaMultiplier,
     this.glassEdgeAlphaMultiplier,
     this.glassRimThickness,
+    this.useCompactLensDefaults = false,
   });
 
   static const _baseGlassSettings = LiquidGlassSettings(
+    glassColor: Color.from(
+      alpha: 0.15,
+      red: 1,
+      green: 1,
+      blue: 1,
+    ),
+    refractiveIndex: GlassDefaults.refractiveIndex,
+    lightIntensity: GlassDefaults.lightIntensity,
+    chromaticAberration: GlassDefaults.chromaticAberration,
+    lightAngle: GlassDefaults.lightAngle,
+    blur: 0,
+  );
+
+  static const _compactGlassSettings = LiquidGlassSettings(
     glassColor: Color.from(
       alpha: 0.15,
       red: 1,
@@ -189,7 +208,9 @@ class AnimatedGlassIndicator extends StatelessWidget {
     // We fade the glass in/out by setting `visibility` on the settings rather
     // than wrapping the widget in `Opacity`.
     final fade = thickness.clamp(0.0, 1.0);
-    final base = _withCompactLensDefaults(glassSettings ?? _baseGlassSettings);
+    final rawBase = glassSettings ?? _baseGlassSettings;
+    final base =
+        useCompactLensDefaults ? _withCompactLensDefaults(rawBase) : rawBase;
     final effectiveSettings = base.copyWith(visibility: fade);
 
     final shape = useSuperellipse
@@ -305,13 +326,13 @@ class AnimatedGlassIndicator extends StatelessWidget {
     }
 
     return settings.copyWith(
-      refractionScale: _baseGlassSettings.refractionScale,
-      verticalRefractionScale: _baseGlassSettings.verticalRefractionScale,
-      sideFisheyeScale: _baseGlassSettings.sideFisheyeScale,
-      compactLensHeightPinch: _baseGlassSettings.compactLensHeightPinch,
-      compactLensEdgePull: _baseGlassSettings.compactLensEdgePull,
-      compactLensEdgeBlur: _baseGlassSettings.compactLensEdgeBlur,
-      compactLensInnerShadow: _baseGlassSettings.compactLensInnerShadow,
+      refractionScale: _compactGlassSettings.refractionScale,
+      verticalRefractionScale: _compactGlassSettings.verticalRefractionScale,
+      sideFisheyeScale: _compactGlassSettings.sideFisheyeScale,
+      compactLensHeightPinch: _compactGlassSettings.compactLensHeightPinch,
+      compactLensEdgePull: _compactGlassSettings.compactLensEdgePull,
+      compactLensEdgeBlur: _compactGlassSettings.compactLensEdgeBlur,
+      compactLensInnerShadow: _compactGlassSettings.compactLensInnerShadow,
     );
   }
 }

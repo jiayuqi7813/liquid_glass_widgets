@@ -24,7 +24,6 @@ import 'shared/bottom_bar_internal.dart';
 import 'shared/glass_search_bar_config.dart';
 import 'shared/searchable_bottom_bar_controller.dart';
 import 'shared/searchable_bottom_bar_internal.dart';
-import 'shared/vector_foreground_renderer.dart';
 
 export 'shared/glass_search_bar_config.dart';
 
@@ -98,7 +97,6 @@ class GlassSearchableBottomBar extends StatefulWidget {
     this.tabWidth,
     this.indicatorExpansion = 14,
     this.onBarTap,
-    this.debugForegroundLayout = false,
   })  : assert(tabs.length > 0,
             'GlassSearchableBottomBar requires at least one tab'),
         assert(
@@ -153,11 +151,6 @@ class GlassSearchableBottomBar extends StatefulWidget {
   ///   giving a more balanced look. The search pill will be slightly narrower
   ///   while searching because it starts after the (now centred) collapsed tab.
   final GlassTabPillAnchor tabPillAnchor;
-
-  /// Prints premium vector foreground layout metrics while debugging.
-  ///
-  /// Useful when diagnosing pressed-state icon/label drift. Defaults to false.
-  final bool debugForegroundLayout;
 
   /// Whether the search bar is currently expanded.
   ///
@@ -748,40 +741,6 @@ class _GlassSearchableBottomBarState extends State<GlassSearchableBottomBar>
                                   },
                           onDismissSearch: () =>
                               widget.searchConfig.onSearchToggle(false),
-                          foregroundBuilder: (ctx, intensity, alignment) =>
-                              _buildForegroundTabRow(),
-                          vectorForegroundBuilder: (
-                            ctx,
-                            intensity,
-                            alignment,
-                            transform,
-                            radius,
-                          ) =>
-                              BottomBarVectorForegroundLayer(
-                            items: [
-                              for (final tab in widget.tabs)
-                                VectorForegroundItem(
-                                  label: tab.label,
-                                  icon: tab.icon,
-                                  activeIcon: tab.activeIcon,
-                                ),
-                            ],
-                            selectedIndex: widget.selectedIndex,
-                            selectedIconColor: widget.selectedIconColor,
-                            unselectedIconColor: widget.unselectedIconColor,
-                            iconSize: widget.iconSize,
-                            labelFontSize: widget.labelFontSize,
-                            iconLabelSpacing: widget.iconLabelSpacing,
-                            tabPadding: widget.tabPadding,
-                            itemCount: widget.tabs.length,
-                            alignment: alignment,
-                            thickness: intensity,
-                            expansion: widget.indicatorExpansion,
-                            transform: transform,
-                            borderRadius: radius,
-                            debugLayout: widget.debugForegroundLayout,
-                            textStyle: widget.textStyle,
-                          ),
                           childUnselected: _buildTabRow(selected: false),
                           selectedTabBuilder: (ctx, intensity, alignment) =>
                               _buildTabRow(
@@ -987,33 +946,6 @@ class _GlassSearchableBottomBarState extends State<GlassSearchableBottomBar>
             child: BottomBarTabItem(
               tab: widget.tabs[i],
               selected: false,
-              selectedIconColor: widget.selectedIconColor,
-              unselectedIconColor: widget.unselectedIconColor,
-              iconSize: widget.iconSize,
-              labelFontSize: widget.labelFontSize,
-              textStyle: widget.textStyle,
-              iconLabelSpacing: widget.iconLabelSpacing,
-              glowDuration: widget.glowDuration,
-              glowBlurRadius: widget.glowBlurRadius,
-              glowSpreadRadius: widget.glowSpreadRadius,
-              glowOpacity: widget.glowOpacity,
-              // onTap is null: all tap selection goes through
-              // SearchableTabIndicator.onBarTapDown (prevents double-fire).
-              onTap: null,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildForegroundTabRow() {
-    return Row(
-      children: [
-        for (var i = 0; i < widget.tabs.length; i++)
-          Expanded(
-            child: BottomBarTabItem(
-              tab: widget.tabs[i],
-              selected: i == widget.selectedIndex,
               selectedIconColor: widget.selectedIconColor,
               unselectedIconColor: widget.unselectedIconColor,
               iconSize: widget.iconSize,

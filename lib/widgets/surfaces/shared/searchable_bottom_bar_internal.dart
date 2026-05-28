@@ -109,8 +109,6 @@ class SearchableTabIndicator extends StatefulWidget {
     this.indicatorColor,
     this.indicatorSettings,
     this.backgroundKey,
-    this.foregroundBuilder,
-    this.vectorForegroundBuilder,
     this.collapsedLogoBuilder,
     this.indicatorExpansion = 14,
     this.interactionGlowColor,
@@ -139,14 +137,6 @@ class SearchableTabIndicator extends StatefulWidget {
   final double innerBlur;
   final MaskingQuality maskingQuality;
   final GlobalKey? backgroundKey;
-  final Widget Function(BuildContext, double, Alignment)? foregroundBuilder;
-  final Widget Function(
-    BuildContext,
-    double,
-    Alignment,
-    Matrix4,
-    double,
-  )? vectorForegroundBuilder;
   final bool isSearchActive;
   final VoidCallback onDismissSearch;
   final WidgetBuilder? collapsedLogoBuilder;
@@ -172,8 +162,6 @@ class SearchableTabIndicator extends StatefulWidget {
 
 class SearchableTabIndicatorState extends State<SearchableTabIndicator>
     with TabDragGestureMixin<SearchableTabIndicator> {
-  final GlobalKey _foregroundKey = GlobalKey();
-
   // ── Mixin interface ────────────────────────────────────────────────────────
   @override
   int get tabCount => widget.tabCount;
@@ -369,13 +357,6 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
     required double glassRadius,
     required Color indicatorColor,
   }) {
-    final effRadius = thickness < 1 ? backgroundRadius : glassRadius;
-    final foregroundContent = widget.quality == GlassQuality.premium
-        ? (widget.foregroundBuilder?.call(context, thickness, alignment) ??
-            widget.childUnselected)
-        : widget.childUnselected;
-    final foregroundRevision = _foregroundRevision;
-
     return SizedBox(
         height: widget.barHeight,
         child: _wrapWithGlow(
@@ -393,16 +374,13 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                 ),
               ),
 
-              if (widget.quality != GlassQuality.premium)
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    key: _foregroundKey,
-                    child: Container(
-                      padding: widget.tabPadding,
-                      child: foregroundContent,
-                    ),
-                  ),
+              // Unselected icons — all tabs in unselected style (for refraction).
+              Positioned.fill(
+                child: Container(
+                  padding: widget.tabPadding,
+                  child: widget.childUnselected,
                 ),
+              ),
               if (widget.visible && thickness > 0.05)
                 AnimatedGlassIndicator(
                   velocity: velocity,
@@ -412,48 +390,16 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                   quality: widget.quality,
                   indicatorColor: indicatorColor,
                   isBackgroundIndicator: false,
-                  borderRadius: effRadius,
+                  borderRadius: thickness < 1 ? backgroundRadius : glassRadius,
                   padding: const EdgeInsets.all(4),
                   expansion: widget.indicatorExpansion,
                   glassSettings: widget.indicatorSettings,
                   backgroundKey: widget.backgroundKey,
-                  foregroundKey: widget.quality == GlassQuality.premium
-                      ? null
-                      : _foregroundKey,
-                  foregroundRevision: foregroundRevision,
-                ),
-
-              if (widget.quality == GlassQuality.premium &&
-                  widget.visible &&
-                  thickness > 0.05 &&
-                  widget.vectorForegroundBuilder != null)
-                Positioned.fill(
-                  child: widget.vectorForegroundBuilder!(
-                    context,
-                    thickness,
-                    alignment,
-                    Matrix4.identity(),
-                    effRadius,
-                  ),
-                ),
-
-              if (widget.quality == GlassQuality.premium)
-                Positioned.fill(
-                  child: _buildVisibleForegroundSource(
-                    foregroundContent: Container(
-                      padding: widget.tabPadding,
-                      child: foregroundContent,
-                    ),
-                    alignment: alignment,
-                    thickness: thickness,
-                    jellyTransform: Matrix4.identity(),
-                    borderRadius: effRadius,
-                  ),
                 ),
 
               // Persistent selected-icon overlay — always at TARGET position
               // so the selected icon stays vibrant (selected style) at rest.
-              if (widget.visible && widget.quality != GlassQuality.premium)
+              if (widget.visible)
                 Positioned.fill(
                   child: Align(
                     alignment: targetAlignment,
@@ -483,54 +429,6 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
     required Color indicatorColor,
   }) {
     final effRadius = thickness < 1 ? backgroundRadius : glassRadius;
-    final foregroundRevision = _foregroundRevision;
-    final foregroundContent = widget.quality == GlassQuality.premium
-        ? Container(
-            padding: widget.tabPadding,
-            height: widget.barHeight,
-            child: widget.foregroundBuilder?.call(
-                  context,
-                  thickness,
-                  alignment,
-                ) ??
-                widget.childUnselected,
-          )
-        : Stack(
-            children: [
-              ClipPath(
-                clipper: JellyClipper(
-                  itemCount: widget.tabCount,
-                  alignment: alignment,
-                  thickness: thickness,
-                  expansion: widget.indicatorExpansion,
-                  transform: jellyTransform,
-                  borderRadius: effRadius,
-                  inverse: true,
-                ),
-                child: Container(
-                  padding: widget.tabPadding,
-                  height: widget.barHeight,
-                  child: widget.childUnselected,
-                ),
-              ),
-              ClipPath(
-                clipper: JellyClipper(
-                  itemCount: widget.tabCount,
-                  alignment: alignment,
-                  thickness: thickness,
-                  expansion: widget.indicatorExpansion,
-                  transform: jellyTransform,
-                  borderRadius: effRadius,
-                ),
-                child: Container(
-                  padding: widget.tabPadding,
-                  height: widget.barHeight,
-                  child:
-                      widget.selectedTabBuilder(context, thickness, alignment),
-                ),
-              ),
-            ],
-          );
     return SizedBox(
         height: widget.barHeight,
         child: _wrapWithGlow(
@@ -566,16 +464,50 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                 backgroundKey: widget.backgroundKey,
               ),
 
-              if (widget.quality != GlassQuality.premium)
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    key: _foregroundKey,
-                    child: foregroundContent,
+              // 2. Icon Content Layer (Unselected + Selected combined for refraction)
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: Stack(
+                    children: [
+                      ClipPath(
+                        clipper: JellyClipper(
+                          itemCount: widget.tabCount,
+                          alignment: alignment,
+                          thickness: thickness,
+                          expansion: widget.indicatorExpansion,
+                          transform: jellyTransform,
+                          borderRadius: effRadius,
+                          inverse: true,
+                        ),
+                        child: Container(
+                          padding: widget.tabPadding,
+                          height: widget.barHeight,
+                          child: widget.childUnselected,
+                        ),
+                      ),
+                      ClipPath(
+                        clipper: JellyClipper(
+                          itemCount: widget.tabCount,
+                          alignment: alignment,
+                          thickness: thickness,
+                          expansion: widget.indicatorExpansion,
+                          transform: jellyTransform,
+                          borderRadius: effRadius,
+                        ),
+                        child: Container(
+                          padding: widget.tabPadding,
+                          height: widget.barHeight,
+                          child: widget.selectedTabBuilder(
+                              context, thickness, alignment),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
 
-              // 3. Moving Glass Indicator Layer. Premium paints this before the
-              // visible foreground source so source text does not enter backdrop.
+              // 3. Moving Glass Indicator Layer — on top so it refracts
+              // the merged icon RepaintBoundary beneath it.
               AnimatedGlassIndicator(
                 velocity: velocity,
                 itemCount: widget.tabCount,
@@ -591,81 +523,10 @@ class SearchableTabIndicatorState extends State<SearchableTabIndicator>
                 expansion: widget.indicatorExpansion,
                 glassSettings: widget.indicatorSettings,
                 backgroundKey: widget.backgroundKey,
-                foregroundKey: widget.quality == GlassQuality.premium
-                    ? null
-                    : _foregroundKey,
-                foregroundRevision: foregroundRevision,
               ),
-
-              if (widget.quality == GlassQuality.premium &&
-                  widget.visible &&
-                  thickness > 0.05 &&
-                  widget.vectorForegroundBuilder != null)
-                Positioned.fill(
-                  child: widget.vectorForegroundBuilder!(
-                    context,
-                    thickness,
-                    alignment,
-                    jellyTransform,
-                    effRadius,
-                  ),
-                ),
-
-              if (widget.quality == GlassQuality.premium)
-                Positioned.fill(
-                  child: _buildVisibleForegroundSource(
-                    foregroundContent: foregroundContent,
-                    alignment: alignment,
-                    thickness: thickness,
-                    jellyTransform: jellyTransform,
-                    borderRadius: effRadius,
-                  ),
-                ),
             ],
           ),
         ));
-  }
-
-  int get _foregroundRevision => Object.hashAll([
-        widget.tabIndex,
-        widget.tabCount,
-        widget.visible,
-        widget.quality,
-        widget.childUnselected.hashCode,
-        widget.selectedTabBuilder.hashCode,
-      ]);
-
-  Widget _buildVisibleForegroundSource({
-    required Widget foregroundContent,
-    required Alignment alignment,
-    required double thickness,
-    required Matrix4 jellyTransform,
-    required double borderRadius,
-  }) {
-    final source = RepaintBoundary(
-      key: _foregroundKey,
-      child: foregroundContent,
-    );
-
-    final shouldHideInsideLens = widget.quality == GlassQuality.premium &&
-        widget.visible &&
-        thickness > 0.05;
-    if (!shouldHideInsideLens) {
-      return source;
-    }
-
-    return ClipPath(
-      clipper: JellyClipper(
-        itemCount: widget.tabCount,
-        alignment: alignment,
-        thickness: thickness,
-        expansion: widget.indicatorExpansion,
-        transform: jellyTransform,
-        borderRadius: borderRadius,
-        inverse: true,
-      ),
-      child: source,
-    );
   }
 }
 

@@ -361,6 +361,7 @@ class SegmentedControlContentState extends State<SegmentedControlContent> {
                     glassEdgeAlphaMultiplier: 0.12,
                     glassRimThickness:
                         widget.indicatorSettings?.effectiveThickness,
+                    useCompactLensDefaults: true,
                   );
                 }
 
